@@ -146,7 +146,7 @@ final class AppState: ObservableObject {
             lastFile = mp3
             status = "Saved \(mp3.lastPathComponent)"
         } catch {
-            status = "MP3 conversion failed: \(error.localizedDescription). Raw audio kept in temp folder."
+            status = "MP3 conversion failed: \(error.localizedDescription) [\(session.diagnostics)]"
         }
 
         if liveMode {

@@ -35,6 +35,15 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         super.init()
     }
 
+    // Diagnostics: how many buffers of each kind arrived (written on the audio queue, read after stop()).
+    private(set) var screenFrames = 0
+    private(set) var systemBuffers = 0
+    private(set) var micBuffers = 0
+    private(set) var convertFailures = 0
+    var diagnostics: String {
+        "screen frames \(screenFrames), system audio \(systemBuffers), mic \(micBuffers), unreadable \(convertFailures)"
+    }
+
     var hasSystemAudio: Bool { systemFile != nil }
     var hasMicAudio: Bool { micFile != nil }
 
@@ -81,13 +90,17 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         guard sampleBuffer.isValid else { return }
         switch type {
         case .audio:
-            guard let buf = Self.pcmBuffer(from: sampleBuffer) else { return }
+            systemBuffers += 1
+            guard let buf = Self.pcmBuffer(from: sampleBuffer) else { convertFailures += 1; return }
             write(buf, to: &systemFile, url: systemURL)
             onSystemBuffer?(buf)
         case .microphone:
-            guard let buf = Self.pcmBuffer(from: sampleBuffer) else { return }
+            micBuffers += 1
+            guard let buf = Self.pcmBuffer(from: sampleBuffer) else { convertFailures += 1; return }
             write(buf, to: &micFile, url: micURL)
             onMicBuffer?(buf)
+        case .screen:
+            screenFrames += 1
         default:
             break
         }
