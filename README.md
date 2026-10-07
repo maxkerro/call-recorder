@@ -14,6 +14,9 @@ mv "Call Recorder.app" /Applications && open "/Applications/Call Recorder.app"
 
 ## Use
 
+The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec" item to the menu bar
+(it shows the elapsed time while recording). Closing the window keeps it running; the hotkeys keep working.
+
 | Step | How |
 |------|-----|
 | 1. Record to MP3 | **⌃⌥R** (Control+Option+R) or the menu-bar button. Press again to stop. |

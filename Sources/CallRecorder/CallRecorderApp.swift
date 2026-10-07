@@ -3,7 +3,34 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.applicationIconImage = AppIcon.make()
+        NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in AppState.shared.registerHotKeys() }
+    }
+
+    // Closing the window keeps the app (and its hotkeys) running in the menu bar.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+}
+
+/// Red rounded square with white sound bars, drawn in code so no asset files are needed.
+enum AppIcon {
+    static func make() -> NSImage {
+        NSImage(size: NSSize(width: 512, height: 512), flipped: false) { rect in
+            let bg = NSBezierPath(roundedRect: rect.insetBy(dx: 20, dy: 20), xRadius: 110, yRadius: 110)
+            NSColor(red: 0.86, green: 0.12, blue: 0.18, alpha: 1).setFill()
+            bg.fill()
+            NSColor.white.setFill()
+            let heights: [CGFloat] = [110, 210, 310, 210, 110]
+            let barWidth: CGFloat = 40, gap: CGFloat = 30
+            let total = CGFloat(heights.count) * barWidth + CGFloat(heights.count - 1) * gap
+            var x = (rect.width - total) / 2
+            for h in heights {
+                let bar = NSRect(x: x, y: (rect.height - h) / 2, width: barWidth, height: h)
+                NSBezierPath(roundedRect: bar, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
+                x += barWidth + gap
+            }
+            return true
+        }
     }
 }
 
@@ -13,10 +40,19 @@ struct CallRecorderApp: App {
     @ObservedObject private var state = AppState.shared
 
     var body: some Scene {
+        // Main window: opens on launch and when you click the Dock icon.
+        Window("Call Recorder", id: "main") {
+            MenuView(state: state)
+        }
+        .windowResizability(.contentSize)
+
         MenuBarExtra {
             MenuView(state: state)
         } label: {
-            Image(systemName: state.isRecording ? "record.circle.fill" : "waveform.circle")
+            HStack(spacing: 4) {
+                Image(systemName: state.isRecording ? "record.circle.fill" : "waveform.circle.fill")
+                Text(state.isRecording ? state.elapsed : "Rec")
+            }
         }
         .menuBarExtraStyle(.window)
     }
