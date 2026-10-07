@@ -44,8 +44,9 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         "screen frames \(screenFrames), system audio \(systemBuffers), mic \(micBuffers), unreadable \(convertFailures)"
     }
 
-    var hasSystemAudio: Bool { systemFile != nil }
-    var hasMicAudio: Bool { micFile != nil }
+    // Checked on disk because stop() closes (and releases) the file handles.
+    var hasSystemAudio: Bool { FileManager.default.fileExists(atPath: systemURL.path) }
+    var hasMicAudio: Bool { FileManager.default.fileExists(atPath: micURL.path) }
 
     func start() async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
