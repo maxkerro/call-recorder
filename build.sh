@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds "Call Recorder.app" next to this script. Needs Xcode 16+ (or its command line tools) on macOS 15.
+# Builds "CallRecorder.app" next to this script. Needs Xcode 16+ (or its command line tools) on macOS 15.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,7 +8,7 @@ if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/ffmpeg ] && [
 fi
 
 swift build -c release
-APP="Call Recorder.app"
+APP="CallRecorder.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/CallRecorder "$APP/Contents/MacOS/CallRecorder"

@@ -1,4 +1,4 @@
-# Call Recorder (macOS 15+)
+# CallRecorder (macOS 15+)
 
 A menu-bar app that records any call you hear (Teams, Telemost, Skype, Zoom, a browser...)
 plus your microphone, and saves one MP3. It also transcribes, using Apple's native Speech framework.
@@ -9,7 +9,7 @@ plus your microphone, and saves one MP3. It also transcribes, using Apple's nati
 brew install ffmpeg        # MP3 encoding
 cd CallRecorder
 ./build.sh                 # needs Xcode 16+ / command line tools
-mv "Call Recorder.app" /Applications && open "/Applications/Call Recorder.app"
+mv "CallRecorder.app" /Applications && open "/Applications/CallRecorder.app"
 ```
 
 ## Use

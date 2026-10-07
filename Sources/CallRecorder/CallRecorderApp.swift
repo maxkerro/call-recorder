@@ -41,7 +41,7 @@ struct CallRecorderApp: App {
 
     var body: some Scene {
         // Main window: opens on launch and when you click the Dock icon.
-        Window("Call Recorder", id: "main") {
+        Window("CallRecorder", id: "main") {
             MenuView(state: state)
         }
         .windowResizability(.contentSize)
@@ -64,7 +64,7 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Call Recorder").font(.headline)
+                Text("CallRecorder").font(.headline)
                 Spacer()
                 if state.isRecording {
                     Label(state.elapsed, systemImage: "circle.fill")
