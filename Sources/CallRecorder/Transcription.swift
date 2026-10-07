@@ -59,7 +59,7 @@ enum Transcription {
 
 /// Step 3: live transcription of one audio source. Restarts its recognition task
 /// whenever Apple ends it (silence timeouts, ~1 min limits), so it can run for a whole call.
-final class LiveTranscriber {
+final class LiveTranscriber: LiveSink {
     let label: String
     private let recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -67,8 +67,8 @@ final class LiveTranscriber {
     private let lock = NSLock()
     private var stopped = false
 
-    /// (label, text, isFinal) — called on an arbitrary thread.
-    var onUpdate: ((String, String, Bool) -> Void)?
+    /// (label, text, isFinal, offset) — called on an arbitrary thread; offset is nil = "now".
+    var onUpdate: ((String, String, Bool, Double?) -> Void)?
 
     init(label: String, localeID: String) {
         self.label = label
@@ -91,7 +91,7 @@ final class LiveTranscriber {
             var ended = error != nil
             if let result {
                 let text = result.bestTranscription.formattedString
-                if !text.isEmpty { self.onUpdate?(self.label, text, result.isFinal) }
+                if !text.isEmpty { self.onUpdate?(self.label, text, result.isFinal, nil) }
                 if result.isFinal { ended = true }
             }
             if ended {
@@ -113,4 +113,6 @@ final class LiveTranscriber {
         request?.endAudio()
         lock.unlock()
     }
+
+    func finish() async { stop() }
 }

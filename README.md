@@ -5,6 +5,14 @@ plus your microphone, and saves one MP3. It also transcribes, using Apple's nati
 
 ## Build
 
+For the best transcription (recommended), run this once. It installs Whisper and downloads a ~550 MB
+model, and all processing stays on your Mac:
+
+```bash
+./setup-whisper.sh
+```
+
+
 ```bash
 brew install ffmpeg        # MP3 encoding
 cd CallRecorder
@@ -34,9 +42,10 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
 ## Notes
 
 - Everyone on the call must be fine with being recorded; check your company's and local rules.
-- Transcription runs on-device when Apple supports the language offline. Download the languages in
-  System Settings → Keyboard → Dictation for best results. Quality for Russian/German is decent,
-  not Whisper-level. If it's not good enough, the transcription step can be swapped for whisper.cpp.
+- Two transcription engines (menu → Engine): **Whisper** (local whisper.cpp, default once set up; very good
+  for English, German and Russian, plus "Auto-detect" for mixed-language calls) and **Apple** (built-in,
+  no setup, weaker). Live transcript with Whisper updates in ~10 s chunks and skips silence.
+- Whisper's live mode uses extra CPU while recording; on Apple Silicon this is fine.
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

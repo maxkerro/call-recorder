@@ -100,6 +100,18 @@ struct MenuView: View {
             }
             .disabled(state.isRecording)
 
+            Picker("Engine", selection: $state.engine) {
+                ForEach(Engine.allCases) { Text($0.name).tag($0) }
+            }
+            .disabled(state.isRecording)
+
+            if let hint = state.whisperHint {
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !state.finalLines.isEmpty || !state.partials.isEmpty {
                 Divider()
                 ScrollViewReader { proxy in
