@@ -13,6 +13,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/CallRecorder "$APP/Contents/MacOS/CallRecorder"
 cp Info.plist "$APP/Contents/Info.plist"
-codesign --force --sign - --identifier local.maxm.CallRecorder "$APP"
+# Ad-hoc signature with a requirement tied to the bundle identifier (not the per-build code hash),
+# so macOS keeps the Screen Recording / Microphone permissions across rebuilds.
+codesign --force --sign - --identifier local.maxm.CallRecorder \
+  --requirements '=designated => identifier "local.maxm.CallRecorder"' "$APP"
 echo "Built: $(pwd)/$APP"
 echo "Move it to /Applications, open it, and grant the permission prompts."
