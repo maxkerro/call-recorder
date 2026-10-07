@@ -37,7 +37,6 @@ final class AppState: ObservableObject {
     private var baseName = ""
     private var startDate = Date()
     private var timer: Timer?
-    private var fileTask: SFSpeechRecognitionTask?
 
     init() {
         localeID = UserDefaults.standard.string(forKey: "localeID") ?? "en-US"
@@ -196,7 +195,7 @@ final class AppState: ObservableObject {
         }
         status = "Transcribing \(url.lastPathComponent)…"
         do {
-            let text = try await Transcription.transcribe(file: url, localeID: localeID, keepAlive: &fileTask)
+            let text = try await Transcription.transcribe(file: url, localeID: localeID)
             let out = url.deletingPathExtension().appendingPathExtension("txt")
             try text.write(to: out, atomically: true, encoding: .utf8)
             finalLines = text.components(separatedBy: "\n\n")

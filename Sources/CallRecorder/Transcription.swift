@@ -11,7 +11,7 @@ enum Transcription {
 
     /// Step 2: transcribe an existing audio file (mp3, m4a, wav ...) with Apple's Speech framework.
     /// Uses on-device recognition when the language supports it.
-    static func transcribe(file url: URL, localeID: String, keepAlive: inout SFSpeechRecognitionTask?) async throws -> String {
+    static func transcribe(file url: URL, localeID: String) async throws -> String {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeID)), recognizer.isAvailable else {
             throw NSError(domain: "CallRecorder", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Speech recognizer for \(localeID) is not available."])
@@ -20,6 +20,7 @@ enum Transcription {
         request.shouldReportPartialResults = false
         if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
 
+        // The task is held in this local until the continuation resumes, which keeps it alive.
         var task: SFSpeechRecognitionTask?
         let text: String = try await withCheckedThrowingContinuation { cont in
             var finished = false
@@ -34,7 +35,7 @@ enum Transcription {
                 }
             }
         }
-        keepAlive = task
+        withExtendedLifetime(task) {}
         return text
     }
 
