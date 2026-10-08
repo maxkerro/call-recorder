@@ -68,13 +68,19 @@ enum WAV {
     }
 }
 
-// MARK: - Debug log (Documents/CallRecordings/live-debug.log, rewritten for every live session)
+// MARK: - Debug log (<project folder>/live-debug.log, rewritten for every live session)
 
 enum LiveLog {
     private static let queue = DispatchQueue(label: "CallRecorder.livelog")
     private static var t0 = Date()
-    static let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("CallRecordings/live-debug.log")
+    static let url: URL = {
+        let fm = FileManager.default
+        let project = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder", isDirectory: true)
+        if fm.fileExists(atPath: project.path) { return project.appendingPathComponent("live-debug.log") }
+        let d = fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("CallRecordings")
+        try? fm.createDirectory(at: d, withIntermediateDirectories: true)
+        return d.appendingPathComponent("live-debug.log")
+    }()
 
     static func reset() {
         queue.async {
