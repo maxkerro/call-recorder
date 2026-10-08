@@ -6,7 +6,7 @@ Same app as the Mac version, built with Electron so it runs on Windows 10/11 (64
 | Step | How |
 |------|-----|
 | 1. Record to MP3 | **Shift+Alt+R** or the button. Press again to stop. The MP3 is then transcribed automatically. |
-| 2. Transcribe an MP3 | **Transcribe file…**. A `.txt` is saved next to the file. |
+| 2. Transcribe an MP3 | **Transcribe file…**. The transcript files are saved next to it. |
 | 3. Live transcript + MP3 | **Shift+Alt+T**. Live "Them" / "Me" lines; the accurate re-check runs after you stop. |
 | 4. Screenshot into the summary | **Shift+Alt+S** or the button, while recording. |
 
@@ -14,7 +14,7 @@ Also, like on the Mac: speaker recognition (**Speaker 1, 2…** for the call aud
 matching; **Rename speaker** replaces a label with a name), language picker (English, Deutsch, Русский, auto-detect),
 vocabulary list, filtering of made-up phrases ("Субтитры создавал DimaTorzok", "Thanks for watching", the vocabulary
 echo "HMI, SAFe, Scrum"), a summary of every call (`summary.md`) and a transcript check that fixes missing words
-(the live version stays as `<name>.live.txt`). The window keeps running in the system tray when closed, so the hotkeys
+(the live version stays as `live_transcript.txt`). The window keeps running in the system tray when closed, so the hotkeys
 keep working.
 
 Files go to `%USERPROFILE%\CallRecordings\<yyyy-MM-dd>\<HH-mm-ss>\` (one folder per call: `audio.mp3`, `raw_transcript.txt`, `fixed_transcript.txt`, `summary.md`, `screenshots\`, and for live recordings `live_transcript.txt`; one day folder per day; deliberately not in Documents, which Windows often syncs to OneDrive). Set the environment variable

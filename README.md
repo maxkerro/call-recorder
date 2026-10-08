@@ -30,8 +30,8 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 | Step | How |
 |------|-----|
 | 1. Record to MP3 | **⇧⌥R** (Shift+Option+R) or the menu-bar button. Press again to stop. |
-| 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. A `.txt` is saved next to it. |
-| 3. Live transcript + MP3 | **⇧⌥T**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
+| 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. `raw_transcript.txt` etc. are saved next to it. |
+| 3. Live transcript + MP3 | **⇧⌥T**. Shows "Me" / "Them" lines live; `audio.mp3` and the transcripts are saved on stop. |
 | 4. Screenshot into the summary | **⇧⌥S** or the button, while recording. See "Screenshots" below. |
 
 Files go to `/Users/mmasliukov/Private/claude/call-recorder/recordings/` (git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Every call gets its own folder, `<yyyy-MM-dd>/<HH-mm-ss>/`:
@@ -87,7 +87,7 @@ Pick the language (English, Deutsch, Русский) in the menu before recordin
   takes a few minutes for long calls; switch it off with the checkbox in the menu.
 - **Speakers:** with "Recognize speakers" on, the call-audio track is analysed locally (FluidAudio) and its lines are
   labelled "Speaker 1", "Speaker 2"… instead of "Them"; your microphone stays "Me". For "Transcribe file…" every voice,
-  including yours, gets a Speaker label. Use **Rename speaker…** to replace a label with a name; the saved `.txt`
+  including yours, gets a Speaker label. Use **Rename speaker…** to replace a label with a name; the saved transcripts
   is updated. Speaker models (small, a few hundred MB at most) download on first use. Voices are matched only
   within one recording; no voice profiles are stored. Limits: it works per transcript segment, so a quick
   interjection inside a long segment may be attributed to the main speaker, and several people sharing your
