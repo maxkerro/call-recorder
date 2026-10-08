@@ -168,7 +168,7 @@ final class AppState: ObservableObject {
         HotKeys.shared.register(id: 1, keyCode: kVK_ANSI_R, modifiers: mods) { [weak self] in
             self?.toggle(live: false)
         }
-        HotKeys.shared.register(id: 2, keyCode: kVK_ANSI_L, modifiers: mods) { [weak self] in
+        HotKeys.shared.register(id: 2, keyCode: kVK_ANSI_T, modifiers: mods) { [weak self] in
             self?.toggle(live: true)
         }
         HotKeys.shared.register(id: 3, keyCode: kVK_ANSI_S, modifiers: mods) { [weak self] in

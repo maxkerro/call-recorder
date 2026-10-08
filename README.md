@@ -31,7 +31,7 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 |------|-----|
 | 1. Record to MP3 | **⌃⌥R** (Control+Option+R) or the menu-bar button. Press again to stop. |
 | 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. A `.txt` is saved next to it. |
-| 3. Live transcript + MP3 | **⌃⌥L**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
+| 3. Live transcript + MP3 | **⌃⌥T**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
 | 4. Screenshot into the summary | **⌃⌥S** or the button, while recording. See "Screenshots" below. |
 
 Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy-MM-dd>/` (one subfolder per day; git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Pick the language (English, Deutsch, Русский) in the menu before recording.
@@ -49,7 +49,7 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
 - Two transcription engines (menu → Engine): **Whisper** (local whisper.cpp, default once set up; very good
   for English, German and Russian, plus "Auto-detect" for mixed-language calls) and **Apple** (built-in,
   no setup, weaker).
-- **Live mode (⌃⌥L)** keeps the Whisper model loaded in a small local `whisper-server` and re-reads the last
+- **Live mode (⌃⌥T)** keeps the Whisper model loaded in a small local `whisper-server` and re-reads the last
   seconds of audio every second. Grey text is tentative and gets rewritten; a word becomes final only when two
   passes agree, and the last word of a pass is never final yet, so a word split across two moments is corrected
   with its second half instead of staying wrong. A pause of ~1 s ends a line. The model needs a moment to load

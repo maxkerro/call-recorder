@@ -90,7 +90,7 @@ struct MenuView: View {
                 Label(state.isRecording && state.liveMode ? "Stop" : "Record + live transcript",
                       systemImage: state.isRecording && state.liveMode ? "stop.fill" : "text.bubble")
                     .frame(maxWidth: .infinity)
-                Text("⌃⌥L").foregroundStyle(.secondary)
+                Text("⌃⌥T").foregroundStyle(.secondary)
             }
             .controlSize(.large)
             .disabled(state.busy || (state.isRecording && !state.liveMode))
