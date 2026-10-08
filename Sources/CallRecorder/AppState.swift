@@ -33,6 +33,9 @@ final class AppState: ObservableObject {
     @Published var summaryText = ""
     @Published var summaryNote = ""
     var summaryTranscript = ""
+    @Published var glossaryCorrect: Bool {
+        didSet { UserDefaults.standard.set(glossaryCorrect, forKey: "glossary") }
+    }
     @Published var summarizeCalls: Bool {
         didSet { UserDefaults.standard.set(summarizeCalls, forKey: "summarize") }
     }
@@ -146,6 +149,7 @@ final class AppState: ObservableObject {
         verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
+        glossaryCorrect = UserDefaults.standard.object(forKey: "glossary") as? Bool ?? true
         offlineMode = UserDefaults.standard.bool(forKey: "offline")
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e
@@ -330,11 +334,11 @@ final class AppState: ObservableObject {
                 let delete = lastFile != nil
                 Task {
                     let verified = await self.verify(base: base, system: system, mic: mic, live: live, deleteTracks: delete)
-                    await self.summarize(lines: verified, base: base)
+                    await self.finishCall(lines: verified, base: base)
                 }
             } else {
                 let live = finalLines, base = baseName
-                Task { await self.summarize(lines: live, base: base) }
+                Task { await self.finishCall(lines: live, base: base) }
             }
         } else if summarizeCalls, let mp3 = lastFile {
             // Plain recording: transcribe it now (the summary follows), so every call gets one.
@@ -435,7 +439,7 @@ final class AppState: ObservableObject {
             status = "Saved \(out.lastPathComponent)"
             let done = finalLines, name = url.deletingPathExtension().lastPathComponent
             let dir = url.deletingLastPathComponent()
-            Task { await self.summarize(lines: done, base: name, dir: dir) }
+            Task { await self.finishCall(lines: done, base: name, dir: dir) }
             if !summarizeCalls { NSWorkspace.shared.activateFileViewerSelecting([out]) }
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
@@ -553,7 +557,44 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: Summary
+    // MARK: Glossary + summary
+
+    /// After the transcript is final: glossary correction, then the summary.
+    func finishCall(lines: [String], base: String, dir: URL? = nil) async {
+        let fixed = await glossaryFix(lines, base: base, dir: dir ?? outDir)
+        await summarize(lines: fixed, base: base, dir: dir)
+    }
+
+    /// Fixes misheard glossary terms (the Vocabulary… file) with the local model. The uncorrected text is kept.
+    private func glossaryFix(_ lines: [String], base: String, dir: URL) async -> [String] {
+        guard glossaryCorrect else { return lines }
+        _ = WhisperEngine.ensureVocabularyFile()
+        let terms = WhisperEngine.vocabularyTerms()
+        guard !terms.isEmpty else { return lines }
+        let before = checkNote
+        func note(_ msg: String) { checkNote = [before, msg].filter { !$0.isEmpty }.joined(separator: " ") }
+        note("Checking spelling of your glossary terms…")
+        do {
+            let r = try await Glossary.correct(lines, terms: terms)
+            guard !r.changes.isEmpty else { note("Glossary check: no corrections needed."); return lines }
+            try lines.joined(separator: "\n").write(to: dir.appendingPathComponent(base + ".uncorrected.txt"),
+                                                    atomically: true, encoding: .utf8)
+            let file = dir.appendingPathComponent(base + ".txt")
+            try r.lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+            if !isRecording {
+                finalLines = r.lines
+                lastTranscriptURL = file
+                refreshSpeakers()
+            }
+            note("Glossary: \(r.changes.count) correction(s): "
+                 + r.changes.map { "\($0.wrong) → \($0.right)" }.joined(separator: ", ")
+                 + ". Original kept as \(base).uncorrected.txt.")
+            return r.lines
+        } catch {
+            note("Glossary check skipped: \(error.localizedDescription)")
+            return lines
+        }
+    }
 
     /// Summarizes a finished transcript with the local Ollama model and saves `<base>.summary.md`.
     func summarize(lines: [String], base: String, dir: URL? = nil) async {

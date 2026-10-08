@@ -137,6 +137,9 @@ struct MenuView: View {
             Toggle("Recognize speakers (Speaker 1, 2…)", isOn: $state.identifySpeakers)
                 .disabled(state.isRecording)
 
+            Toggle("Fix glossary terms in transcript (Vocabulary…, local Ollama)", isOn: $state.glossaryCorrect)
+                .disabled(state.isRecording)
+
             Toggle("Summarize each call (local Ollama)", isOn: $state.summarizeCalls)
                 .disabled(state.isRecording)
 

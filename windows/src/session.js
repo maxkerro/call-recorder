@@ -29,6 +29,7 @@ class Session {
       diarize: deps.diarize || ((f) => require('./lib/diarize').diarize(f)),
       whisper: deps.whisper || whisper,
       summarize: deps.summarize || summarizer.summarize,
+      glossary: deps.glossary || ((l, o) => require('./lib/glossary').correct(l, o)),
       describeImage: deps.describeImage || summarizer.describeImage,
       server: deps.server || new WhisperServer(),
       runTool: deps.runTool || tools.run,
@@ -90,7 +91,7 @@ class Session {
       this.set({ status: dir ? `Recordings will be saved in ${dir}` : 'Recordings go to the default folder again' });
       return;
     }
-    if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode'].includes(key)) return;
+    if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode', 'glossaryCorrect'].includes(key)) return;
     if (key === 'language' && !config.languages.some((l) => l.id === value)) return;
     this.settings[key] = value;
     config.saveSettings(this.settings);
@@ -263,12 +264,12 @@ class Session {
         this.set({ busy: false });
         const verified = await this.verify({ base, dir, system: wavs.system, mic: wavs.mic, live: liveLines });
         fs.rmSync(tmp, { recursive: true, force: true });
-        await this.summarize(verified, base, dir, shots);
+        await this.finishCall(verified, base, dir, shots);
         return;
       }
       this.cleanupTracks();
       this.set({ busy: false });
-      await this.summarize(liveLines, base, dir, shots);
+      await this.finishCall(liveLines, base, dir, shots);
       return;
     }
 
@@ -405,7 +406,36 @@ class Session {
     } finally {
       this.set({ busy: false });
     }
-    if (lines) await this.summarize(lines, base, dir, shots);
+    if (lines) await this.finishCall(lines, base, dir, shots);
+  }
+
+  /** After the transcript is final: glossary correction, then the summary. */
+  async finishCall(lines, base, dir, shots = []) {
+    const fixed = await this.glossaryFix(lines, base, dir);
+    await this.summarize(fixed, base, dir, shots);
+  }
+
+  /** Fixes misheard glossary terms (Vocabulary… file) with the local model. The uncorrected text is kept. */
+  async glossaryFix(lines, base, dir) {
+    if (!this.settings.glossaryCorrect) return lines;
+    text.ensureVocabularyFile();
+    if (!text.vocabularyTerms().length) return lines;
+    const before = this.s.checkNote;
+    this.set({ checkNote: [before, 'Checking spelling of your glossary terms…'].filter(Boolean).join(' ') });
+    const note = (msg) => this.set({ checkNote: [before, msg].filter(Boolean).join(' ') });
+    try {
+      const { lines: out, changes } = await this.deps.glossary(lines, {});
+      if (!changes.length) { note('Glossary check: no corrections needed.'); return lines; }
+      fs.writeFileSync(path.join(dir, base + '.uncorrected.txt'), lines.join('\n'));
+      const file = path.join(dir, base + '.txt');
+      fs.writeFileSync(file, out.join('\n'));
+      if (!this.s.isRecording) { this.lastTranscriptFile = file; this.set({ finalLines: out }); this.refreshSpeakers(); }
+      note(`Glossary: ${changes.length} correction(s): ${changes.map((c) => `${c.wrong} → ${c.right}`).join(', ')}. Original kept as ${base}.uncorrected.txt.`);
+      return out;
+    } catch (e) {
+      note(`Glossary check skipped: ${e.message}`);
+      return lines;
+    }
   }
 
   /** Descriptions of the screenshots as transcript lines ("[mm:ss] [Screen] …"), made by a local vision model. */

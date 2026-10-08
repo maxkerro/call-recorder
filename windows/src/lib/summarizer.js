@@ -126,4 +126,4 @@ async function describeImage(bytes, { base = BASE, model, topic = '' } = {}) {
   return j.response.trim().replace(/\s+/g, ' ');
 }
 
-module.exports = { summarize, pasteText, installedModels, pickModel, pickVisionModel, describeImage, topicLine, split, SummaryError, PROMPT };
+module.exports = { generate, BASE, summarize, pasteText, installedModels, pickModel, pickVisionModel, describeImage, topicLine, split, SummaryError, PROMPT };

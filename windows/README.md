@@ -78,3 +78,10 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
   the call a local Ollama vision model (`ollama pull qwen2.5vl:7b`) describes each image and the text joins the transcript as
   `[mm:ss] [Screen] …` lines for the summary. Images go to 127.0.0.1 only.
 - "Thank you"/"Danke"/"Спасибо" that Whisper invents on keyboard noise are dropped when the audio under them is that quiet.
+
+- **Glossary correction:** after a call is transcribed, the local Ollama model compares the transcript with the terms in your
+  **Vocabulary…** file and points out misheard ones ("safe" → "SAFe", "Luxsoft" → "Luxoft"). The model only *suggests*; the app
+  checks every suggestion (the replacement must be a glossary term, the quoted phrase must really be in the transcript) and applies
+  it inside that phrase only, so the text is never rewritten. `<name>.txt` gets the corrected text, `<name>.uncorrected.txt` keeps the
+  original, and the window lists what changed. Switch it off with the "Fix glossary terms" checkbox. Keep the glossary to real names
+  and jargon; very common words make poor entries.

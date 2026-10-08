@@ -104,7 +104,7 @@ enum Summarizer {
         return text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    private static func split(_ text: String, limit: Int) -> [String] {
+    static func split(_ text: String, limit: Int) -> [String] {
         guard text.count > limit else { return [text] }
         var out: [String] = [], cur = ""
         for line in text.components(separatedBy: "\n") {
@@ -115,7 +115,7 @@ enum Summarizer {
         return out
     }
 
-    private static func generate(model: String, prompt: String) async throws -> String {
+    static func generate(model: String, prompt: String) async throws -> String {
         var req = URLRequest(url: base.appendingPathComponent("api/generate"))
         req.httpMethod = "POST"
         req.timeoutInterval = 600

@@ -30,7 +30,7 @@ function render(s) {
   }
   if (lang.value !== s.settings.language) lang.value = s.settings.language;
   lang.disabled = s.isRecording;
-  for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode']) {
+  for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'glossaryCorrect', 'offlineMode']) {
     $(k).checked = !!s.settings[k];
     $(k).disabled = s.isRecording;
   }
@@ -82,7 +82,7 @@ function render(s) {
 $('btnRec').onclick = () => window.api.toggle(false);
 $('btnLive').onclick = () => window.api.toggle(true);
 $('language').onchange = (e) => window.api.setSetting('language', e.target.value);
-for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode']) {
+for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'glossaryCorrect', 'offlineMode']) {
   $(k).onchange = (e) => window.api.setSetting(k, e.target.checked);
 }
 $('btnRename').onclick = () => {

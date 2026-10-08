@@ -94,6 +94,12 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   with the recording, so treat that folder accordingly.
 - **Silence and typing:** very short phrases such as "Thank you" or "Danke" that Whisper invents on keyboard noise are dropped when the
   audio under them is that quiet; a real, audible "thank you" is kept. Details are in `live-debug.log` ("dropped quiet filler").
+- **Glossary correction:** after a call is transcribed, the local Ollama model compares the transcript with the terms in your
+  **Vocabulary…** file and points out misheard ones ("safe" → "SAFe", "Luxsoft" → "Luxoft"). The model only *suggests*; the app
+  checks every suggestion (the replacement must be a glossary term, the quoted phrase must really be in the transcript) and applies
+  it inside that phrase only, so the text is never rewritten. `<name>.txt` gets the corrected text, `<name>.uncorrected.txt` keeps the
+  original, and the window lists what changed. Switch it off with the "Fix glossary terms" checkbox. Keep the glossary to real names
+  and jargon; very common words make poor entries.
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

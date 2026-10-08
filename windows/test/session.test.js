@@ -49,7 +49,7 @@ function makeSession(over = {}) {
     ...over,
   };
   const s = new Session(hooks, deps);
-  s.settings = { ...s.settings, language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true };
+  s.settings = { ...s.settings, language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, glossaryCorrect: false };
   return { s, states };
 }
 
@@ -192,4 +192,37 @@ test('recordings folder can be chosen, validated and reset', async () => {
   s.setSetting('outputRoot', '');
   assert.notStrictEqual(config.rootDir(), target);
   process.env.CALLREC_DIR = envDir;
+});
+
+test('glossary correction fixes only validated terms, keeps the original, and shows what changed', async () => {
+  const glossary = require('../src/lib/glossary');
+  const lines = ['[00:00] Me: we plan with safe and the safe deployment is fine', '[00:05] Them: Luxsoft agrees'];
+  const answers = JSON.stringify([
+    { wrong: 'safe', right: 'SAFe', context: 'we plan with safe and' },
+    { wrong: 'Luxsoft', right: 'Luxoft', context: 'Luxsoft agrees' },
+    { wrong: 'deployment', right: 'Kubernetes', context: 'safe deployment is' },        // not a glossary term: rejected
+    { wrong: 'fine', right: 'SAFe', context: 'made up phrase not in text' },             // context not verbatim: rejected
+  ]);
+  const r = await glossary.correct(lines, { terms: ['SAFe', 'Luxoft', 'HMI'], generate: async () => '```json\n' + answers + '\n```' });
+  assert.deepStrictEqual(r.lines, ['[00:00] Me: we plan with SAFe and the safe deployment is fine', '[00:05] Them: Luxoft agrees']);
+  assert.strictEqual(r.changes.length, 2);
+
+  const { s } = makeSession({ glossary: async (l) => glossary.correct(l, { terms: ['SAFe', 'Luxoft'], generate: async () => answers }) });
+  s.settings.glossaryCorrect = true;
+  const d = path.join(dir, 'gl'); fs.mkdirSync(d, { recursive: true });
+  const out = await s.glossaryFix(lines, 'Call_x', d);
+  assert.match(out[0], /with SAFe and/);
+  assert.strictEqual(fs.readFileSync(path.join(d, 'Call_x.uncorrected.txt'), 'utf8'), lines.join('\n'));
+  assert.match(fs.readFileSync(path.join(d, 'Call_x.txt'), 'utf8'), /Luxoft agrees/);
+  assert.match(s.s.checkNote, /2 correction\(s\): safe → SAFe, Luxsoft → Luxoft/);
+  const off = makeSession({ glossary: async () => { throw new Error('should not run'); } });
+  assert.deepStrictEqual(await off.s.glossaryFix(lines, 'Call_y', d), lines);   // setting is off
+});
+
+test('glossary: a term already spelled correctly is never changed and no fixes means no change', () => {
+  const glossary = require('../src/lib/glossary');
+  const lines = ['[00:00] Me: it is safe to go'];
+  const fixes = glossary.parseFixes(JSON.stringify([{ wrong: 'safe', right: 'SAFe', context: 'it is safe to go' }, { wrong: 'SAFe', right: 'SAFe', context: 'x' }, { wrong: 'Scrum', right: 'SAFe', context: 'x' }]), ['SAFe', 'Scrum'], lines);
+  assert.strictEqual(fixes.length, 1);
+  assert.deepStrictEqual(glossary.apply(lines, []).lines, lines);
 });
