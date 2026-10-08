@@ -226,3 +226,13 @@ test('glossary: a term already spelled correctly is never changed and no fixes m
   assert.strictEqual(fixes.length, 1);
   assert.deepStrictEqual(glossary.apply(lines, []).lines, lines);
 });
+
+test('cancelling the area selection saves nothing', async () => {
+  const { s } = makeSession();
+  s.hooks.captureScreen = async () => null;
+  await s.toggle(false); feed(s, 2);
+  assert.strictEqual(await s.takeScreenshot(), null);
+  assert.strictEqual(s.s.shotCount, 0);
+  assert.match(s.s.status, /cancelled/);
+  await s.toggle(false);
+});

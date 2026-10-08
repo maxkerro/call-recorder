@@ -182,6 +182,7 @@ class Session {
     if (!this.hooks.captureScreen) return null;
     try {
       const png = await this.hooks.captureScreen();
+      if (!png) { this.set({ status: 'Screenshot cancelled.' }); return null; }
       const t = (Date.now() - this.sessionStart) / 1000;
       const dir = path.join(this.outDir, this.baseName + '_screens');
       fs.mkdirSync(dir, { recursive: true });

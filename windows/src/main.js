@@ -51,14 +51,48 @@ function rpc(channel) {
   });
 }
 
-/** PNG of the screen the mouse is on (where a shared presentation usually is). Stays on this computer. */
+/** Lets the user drag a rectangle on a frozen picture of the screen. Resolves {x,y,w,h,vw,vh} (CSS px) or null. */
+function selectRegion(display, dataUrl) {
+  return new Promise((resolve) => {
+    const w = new BrowserWindow({
+      x: display.bounds.x, y: display.bounds.y, width: display.bounds.width, height: display.bounds.height,
+      frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: false, backgroundColor: '#000000',
+      webPreferences: { preload: path.join(__dirname, 'select-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    w.setAlwaysOnTop(true, 'screen-saver');
+    let finished = false;
+    const finish = (r) => {
+      if (finished) return;
+      finished = true;
+      ipcMain.removeListener('sel:done', onDone);
+      if (!w.isDestroyed()) w.destroy();
+      resolve(r);
+    };
+    const onDone = (e, r) => { if (e.sender === w.webContents) finish(r && Number.isFinite(r.w) ? r : null); };
+    ipcMain.on('sel:done', onDone);
+    w.on('closed', () => finish(null));
+    w.webContents.once('did-finish-load', () => { w.webContents.send('sel:init', dataUrl); w.show(); w.focus(); });
+    w.loadFile(path.join(__dirname, 'renderer', 'select.html'));
+  });
+}
+
+/** PNG of a region the user selects on the screen the mouse is on, or null if cancelled. Stays on this computer. */
 async function captureScreen() {
   const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const size = { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) };
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
   const src = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
   if (!src || src.thumbnail.isEmpty()) throw new Error('no screen image available');
-  return src.thumbnail.toPNG();
+  const full = src.thumbnail;
+  const r = await selectRegion(d, full.toDataURL());
+  if (!r) return null;
+  const { width, height } = full.getSize();
+  const k = width / r.vw;
+  const x = Math.max(0, Math.round(r.x * k)), y = Math.max(0, Math.round(r.y * k));
+  const rect = { x, y, width: Math.min(width - x, Math.round(r.w * k)), height: Math.min(height - y, Math.round(r.h * k)) };
+  if (rect.width < 4 || rect.height < 4) return null;
+  return full.crop(rect).toPNG();
 }
 
 function createWindow() {

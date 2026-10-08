@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'self'">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; cursor: crosshair; user-select: none; background: #000; }
+#bg, #hot { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background-size: 100vw 100vh; }
+#bg { filter: brightness(.45); }
+#hot { display: none; clip-path: inset(0); }
+#box { position: fixed; display: none; border: 2px solid #ff3b47; box-sizing: border-box; overflow: hidden; }
+#help { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px;
+  background: rgba(0,0,0,.75); color: #fff; font: 14px "Segoe UI", system-ui, sans-serif; pointer-events: none; }
+</style></head>
+<body>
+<div id="bg"></div>
+<div id="box"><div id="hot"></div></div>
+<div id="help">Drag to select the part of the screen to include in the summary · Esc to cancel</div>
+<script src="select.js"></script>
+</body></html>

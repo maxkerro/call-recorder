@@ -74,7 +74,7 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
 - **Save to:** → **Choose…** sets another recordings folder (a subfolder per day is created inside); **Default** restores
   `%USERPROFILE%\CallRecordings`. Cloud-synced-looking folders are flagged.
 - **Topic:** type what the call is about; the summary is organised around it and the topic is printed at the top of `<name>.summary.md`.
-- **Screenshots:** during a recording press **Shift+Alt+S**. The screen under the mouse is saved in `<name>_screens\`; after
+- **Screenshots:** during a recording press **Shift+Alt+S**. The screen freezes: drag a rectangle around just the relevant part (Esc or right-click cancels). Only that area is saved in `<name>_screens\`; after
   the call a local Ollama vision model (`ollama pull qwen2.5vl:7b`) describes each image and the text joins the transcript as
   `[mm:ss] [Screen] …` lines for the summary. Images go to 127.0.0.1 only.
 - "Thank you"/"Danke"/"Спасибо" that Whisper invents on keyboard noise are dropped when the audio under them is that quiet.

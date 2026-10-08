@@ -86,8 +86,8 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   Claude chat. Turn it off with the "Summarize each call" checkbox.
 - **Topic:** type what the call is about into the *Topic* field before (or during) the call. The summary is then organised
   around it, with off-topic items mentioned briefly, and the topic is printed at the top of `<name>.summary.md`.
-- **Screenshots:** while recording, press **⇧⌥S** (or the button) when someone shares a slide or a picture. The screen under your
-  mouse is saved in `<name>_screens/` next to the recording. After the call a local vision model in Ollama describes each
+- **Screenshots:** while recording, press **⇧⌥S** (or the button) when someone shares a slide or a picture. Drag a rectangle around just the relevant part (Esc cancels); only that
+  area is saved in `<name>_screens/` next to the recording. After the call a local vision model in Ollama describes each
   image (`ollama pull qwen2.5vl:7b`; llama3.2-vision, gemma3 and llava also work), the descriptions are added to the transcript as
   `[mm:ss] [Screen] …` lines (also saved as `<name>.screens.txt`) and used in the summary. Without a vision model the images are
   still saved. Images are only ever sent to Ollama on 127.0.0.1. Screenshots of slides can contain confidential data: they are kept

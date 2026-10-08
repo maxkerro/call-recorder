@@ -679,41 +679,42 @@ final class AppState: ObservableObject {
 
     // MARK: Screenshots
 
-    /// Saves a screenshot of the screen under the mouse (a shared presentation, a picture…) during the call.
+    /// Saves a screenshot of a part of the screen that you select with the mouse (a shared slide, a picture…).
     /// After the call a local vision model describes it and the description joins the transcript for the summary.
+    /// Uses macOS's own selection tool (crosshair; Esc cancels). The image stays on this Mac.
     func takeScreenshot() async {
         guard isRecording else { status = "Screenshots can be taken while a recording is running."; return }
+        let t = Date().timeIntervalSince(startDate)
+        let dir = outDir.appendingPathComponent(baseName + "_screens", isDirectory: true)
+        let name = String(format: "%02d_", shots.count + 1) + Self.timeText(t).replacingOccurrences(of: ":", with: "-") + ".png"
+        let file = dir.appendingPathComponent(name)
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            let mouse = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-            let id = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-            guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first else {
-                throw CaptureError.noDisplay
-            }
-            let cfg = SCStreamConfiguration()
-            cfg.width = display.width * 2
-            cfg.height = display.height * 2
-            cfg.showsCursor = false
-            let image = try await SCScreenshotManager.captureImage(
-                contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: cfg)
-            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
-                throw NSError(domain: "CallRecorder", code: 5,
-                              userInfo: [NSLocalizedDescriptionKey: "could not encode the image"])
-            }
-            let t = Date().timeIntervalSince(startDate)
-            let dir = outDir.appendingPathComponent(baseName + "_screens", isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
-            let name = String(format: "%02d_", shots.count + 1) + Self.timeText(t).replacingOccurrences(of: ":", with: "-") + ".png"
-            let file = dir.appendingPathComponent(name)
-            try png.write(to: file)
+        } catch {
+            status = "Screenshot failed: \(error.localizedDescription)"
+            return
+        }
+        status = "Drag to select the area… (Esc cancels)"
+        let ok = await Task.detached { Self.runSelectionCapture(to: file) }.value
+        if ok, FileManager.default.fileExists(atPath: file.path) {
             shots.append(Shot(t: t, file: file))
             shotCount = shots.count
             status = "Screenshot \(shots.count) saved at \(Self.timeText(t))"
-        } catch {
-            status = "Screenshot failed: \(error.localizedDescription)"
+        } else {
+            try? FileManager.default.removeItem(at: dir)         // empty folder if nothing was saved
+            status = "Screenshot cancelled."
         }
+    }
+
+    /// `screencapture -i -s -x`: interactive area selection, no sound. Exits non-zero or writes no file when cancelled.
+    private nonisolated static func runSelectionCapture(to file: URL) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-i", "-s", "-x", "-t", "png", file.path]
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 
     /// Puts the summary prompt + transcript on the clipboard, to paste into claude.ai.
