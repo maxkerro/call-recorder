@@ -31,7 +31,7 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 | 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. A `.txt` is saved next to it. |
 | 3. Live transcript + MP3 | **⌃⌥L**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
 
-Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, Русский) in the menu before recording.
+Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy-MM-dd>/` (one subfolder per day; git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Pick the language (English, Deutsch, Русский) in the menu before recording.
 
 ## Permissions (first launch)
 

@@ -50,12 +50,28 @@ final class AppState: ObservableObject {
         ("de-DE", "Deutsch"), ("ru-RU", "Русский"),
     ]
 
-    let outDir: URL = {
-        let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    /// All recordings live in <root>/<yyyy-MM-dd>/. The root is the project folder on Max's Mac
+    /// (git-ignored); if it can't be created, ~/Documents/CallRecordings is used instead.
+    let rootDir: URL = {
+        let fm = FileManager.default
+        let preferred = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder/CallRecordings", isDirectory: true)
+        if (try? fm.createDirectory(at: preferred, withIntermediateDirectories: true)) != nil { return preferred }
+        let d = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CallRecordings", isDirectory: true)
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }()
+
+    /// Today's folder; refreshed when a recording starts so one call's files stay together.
+    private(set) lazy var outDir: URL = Self.dayFolder(in: rootDir)
+
+    private static func dayFolder(in root: URL) -> URL {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        let d = root.appendingPathComponent(f.string(from: Date()), isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
 
     private var capture: CaptureSession?
     private var transcribers: [LiveSink] = []
@@ -112,6 +128,7 @@ final class AppState: ObservableObject {
         openLine = [:]
         partials = [:]
         liveMode = live
+        outDir = Self.dayFolder(in: rootDir)
         if live { LiveLog.reset() }
 
         var sinks: [LiveSink] = []
@@ -289,7 +306,7 @@ final class AppState: ObservableObject {
     func transcribeFileDialog() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav]
-        panel.directoryURL = outDir
+        panel.directoryURL = Self.dayFolder(in: rootDir)
         panel.message = "Choose an audio file to transcribe"
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -348,7 +365,8 @@ final class AppState: ObservableObject {
             refreshSpeakers()
             status = "Saved \(out.lastPathComponent)"
             let done = finalLines, name = url.deletingPathExtension().lastPathComponent
-            Task { await self.summarize(lines: done, base: name) }
+            let dir = url.deletingLastPathComponent()
+            Task { await self.summarize(lines: done, base: name, dir: dir) }
             if !summarizeCalls { NSWorkspace.shared.activateFileViewerSelecting([out]) }
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
@@ -459,7 +477,7 @@ final class AppState: ObservableObject {
     // MARK: Summary
 
     /// Summarizes a finished transcript with the local Ollama model and saves `<base>.summary.md`.
-    func summarize(lines: [String], base: String) async {
+    func summarize(lines: [String], base: String, dir: URL? = nil) async {
         guard summarizeCalls else { return }
         let transcript = lines.joined(separator: "\n")
         guard transcript.split(whereSeparator: \.isWhitespace).count >= 15 else { return }
@@ -467,7 +485,7 @@ final class AppState: ObservableObject {
         summaryNote = "Summarizing the call with a local model…"
         do {
             let text = try await Summarizer.summarize(transcript: transcript)
-            let url = outDir.appendingPathComponent(base + ".summary.md")
+            let url = (dir ?? outDir).appendingPathComponent(base + ".summary.md")
             try text.write(to: url, atomically: true, encoding: .utf8)
             summaryText = text
             summaryTranscript = transcript
@@ -486,7 +504,7 @@ final class AppState: ObservableObject {
         summaryNote = "Copied. Paste it into a Claude chat to get the summary."
     }
 
-    func openFolder() { NSWorkspace.shared.open(outDir) }
+    func openFolder() { NSWorkspace.shared.open(rootDir) }
 
     func openVocabulary() { NSWorkspace.shared.open(WhisperEngine.ensureVocabularyFile()) }
 
