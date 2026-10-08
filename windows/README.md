@@ -13,11 +13,11 @@ Same app as the Mac version, built with Electron so it runs on Windows 10/11 (64
 Also, like on the Mac: speaker recognition (**Speaker 1, 2…** for the call audio, "Me" for your microphone; word-level
 matching; **Rename speaker** replaces a label with a name), language picker (English, Deutsch, Русский, auto-detect),
 vocabulary list, filtering of made-up phrases ("Субтитры создавал DimaTorzok", "Thanks for watching", the vocabulary
-echo "HMI, SAFe, Scrum"), a summary of every call (`<name>.summary.md`) and a transcript check that fixes missing words
+echo "HMI, SAFe, Scrum"), a summary of every call (`summary.md`) and a transcript check that fixes missing words
 (the live version stays as `<name>.live.txt`). The window keeps running in the system tray when closed, so the hotkeys
 keep working.
 
-Files go to `%USERPROFILE%\CallRecordings\<yyyy-MM-dd>\` (one folder per day; deliberately not in Documents, which Windows often syncs to OneDrive). Set the environment variable
+Files go to `%USERPROFILE%\CallRecordings\<yyyy-MM-dd>\<HH-mm-ss>\` (one folder per call: `audio.mp3`, `raw_transcript.txt`, `fixed_transcript.txt`, `summary.md`, `screenshots\`, and for live recordings `live_transcript.txt`; one day folder per day; deliberately not in Documents, which Windows often syncs to OneDrive). Set the environment variable
 `CALLREC_DIR` to use another folder. Settings, models and tools live in `%APPDATA%\CallRecorder`.
 
 ## Install (once)
@@ -73,8 +73,8 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
 
 - **Save to:** → **Choose…** sets another recordings folder (a subfolder per day is created inside); **Default** restores
   `%USERPROFILE%\CallRecordings`. Cloud-synced-looking folders are flagged.
-- **Topic:** type what the call is about; the summary is organised around it and the topic is printed at the top of `<name>.summary.md`.
-- **Screenshots:** during a recording press **Shift+Alt+S**. The screen freezes: drag a rectangle around just the relevant part (Esc or right-click cancels). Only that area is saved in `<name>_screens\`; after
+- **Topic:** type what the call is about; the summary is organised around it and the topic is printed at the top of `summary.md`.
+- **Screenshots:** during a recording press **Shift+Alt+S**. The screen freezes: drag a rectangle around just the relevant part (Esc or right-click cancels). Only that area is saved in the call's `screenshots\` folder; after
   the call a local Ollama vision model (`ollama pull qwen2.5vl:7b`) describes each image and the text joins the transcript as
   `[mm:ss] [Screen] …` lines for the summary. Images go to 127.0.0.1 only.
 - "Thank you"/"Danke"/"Спасибо" that Whisper invents on keyboard noise are dropped when the audio under them is that quiet.
@@ -82,6 +82,6 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
 - **Glossary correction:** after a call is transcribed, the local Ollama model compares the transcript with the terms in your
   **Vocabulary…** file and points out misheard ones ("safe" → "SAFe", "Luxsoft" → "Luxoft"). The model only *suggests*; the app
   checks every suggestion (the replacement must be a glossary term, the quoted phrase must really be in the transcript) and applies
-  it inside that phrase only, so the text is never rewritten. `<name>.txt` gets the corrected text, `<name>.uncorrected.txt` keeps the
+  it inside that phrase only, so the text is never rewritten. `fixed_transcript.txt` gets the corrected text, `raw_transcript.txt` keeps the
   original, and the window lists what changed. Switch it off with the "Fix glossary terms" checkbox. Keep the glossary to real names
   and jargon; very common words make poor entries.

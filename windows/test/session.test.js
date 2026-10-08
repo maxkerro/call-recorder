@@ -32,6 +32,9 @@ http.createServer((req, res) => {
 
 const { Session } = require('../src/session');
 const config = require('../src/lib/config');
+const layout = require('../src/lib/layout');
+// the one call folder created under <root>/<date>/
+const lastCall = (root) => { const day = config.dayFolder(root); const ds = fs.readdirSync(day).sort(); return path.join(day, ds[ds.length - 1]); };
 
 const tone = (sec, rate = 48000) => Float32Array.from({ length: Math.round(sec * rate) }, (_, i) => 0.2 * Math.sin(i / 9));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -63,15 +66,14 @@ test('plain recording: MP3 is made, then transcribed with speaker labels and sum
   assert.ok(s.s.isRecording);
   feed(s, 4);
   await s.toggle(false);
-  const day = config.dayFolder();
-  const files = fs.readdirSync(day);
-  const mp3 = files.find((f) => f.endsWith('.mp3'));
-  assert.ok(mp3, `no mp3 in ${files}`);
-  assert.ok(fs.statSync(path.join(day, mp3)).size > 1000);
-  const txt = fs.readFileSync(path.join(day, mp3.replace('.mp3', '.txt')), 'utf8');
-  assert.match(txt, /Speaker 1: hello from the first voice/);
-  assert.match(txt, /Speaker 2: and now the second voice talks/);
-  assert.match(fs.readFileSync(path.join(day, mp3.replace('.mp3', '.summary.md')), 'utf8'), /A short call/);
+  const call = lastCall();
+  assert.match(path.basename(call), /^\d\d-\d\d-\d\d(-\d+)?$/);
+  assert.ok(fs.statSync(path.join(call, 'audio.mp3')).size > 1000);
+  const raw = fs.readFileSync(path.join(call, 'raw_transcript.txt'), 'utf8');
+  assert.match(raw, /Speaker 1: hello from the first voice/);
+  assert.match(raw, /Speaker 2: and now the second voice talks/);
+  assert.strictEqual(fs.readFileSync(path.join(call, 'fixed_transcript.txt'), 'utf8'), raw);   // glossary off: identical
+  assert.match(fs.readFileSync(path.join(call, 'summary.md'), 'utf8'), /A short call/);
   assert.deepStrictEqual(s.s.speakerLabels, ['Speaker 1', 'Speaker 2']);
   assert.match(s.s.summaryNote, /Summary saved/);
 });
@@ -81,7 +83,7 @@ test('renaming a speaker updates the shown lines and the saved file', async () =
   await s.toggle(false); feed(s, 3); await s.toggle(false);
   s.renameSpeaker('Speaker 1', 'Anna');
   assert.ok(s.s.finalLines.some((l) => l.includes('] Anna: hello')));
-  assert.ok(fs.readFileSync(s.lastTranscriptFile, 'utf8').includes('Anna: hello'));
+  assert.ok(fs.readFileSync(path.join(lastCall(), 'fixed_transcript.txt'), 'utf8').includes('Anna: hello'));
   assert.deepStrictEqual(s.s.speakerLabels, ['Speaker 2']);
 });
 
@@ -93,10 +95,9 @@ test('live recording: live lines, then the verified transcript replaces them and
   assert.ok(states.some((x) => x.finalLines.some((l) => l.includes('Them: live words'))) ||
             states.some((x) => Object.keys(x.partials).length), 'no live text was produced');
   await s.toggle(true);
-  const day = config.dayFolder();
-  const live = fs.readdirSync(day).find((f) => f.endsWith('.live.txt'));
-  assert.ok(live, 'live transcript was not kept');
-  const finalTxt = fs.readFileSync(path.join(day, live.replace('.live.txt', '.txt')), 'utf8');
+  const call = lastCall();
+  assert.ok(fs.existsSync(path.join(call, 'live_transcript.txt')), 'live transcript was not kept');
+  const finalTxt = fs.readFileSync(path.join(call, 'raw_transcript.txt'), 'utf8');
   assert.match(finalTxt, /Speaker 1: hello from the first voice/);
   assert.match(finalTxt, /Me: /);                                          // the mic track keeps its own label
   assert.match(s.s.checkNote, /Speakers found: 2/);
@@ -108,7 +109,7 @@ test('speaker recognition failing is reported, labels fall back to Them/Me', asy
   for (let i = 0; i < 20; i++) { feed(s, 0.1); await sleep(100); }
   await s.toggle(true);
   assert.match(s.s.checkNote, /Speaker recognition FAILED: model download blocked/);
-  const txt = fs.readFileSync(s.lastTranscriptFile, 'utf8');
+  const txt = fs.readFileSync(path.join(lastCall(), 'fixed_transcript.txt'), 'utf8');
   assert.match(txt, /Them: /);
 });
 
@@ -134,14 +135,14 @@ test('a capture failure is shown and nothing is left recording', async () => {
 
 test('too little speech gives a clear note instead of a summary', async () => {
   const { s } = makeSession();
-  await s.summarize(['[00:00] Me: hi'], 'x', config.dayFolder());
+  await s.summarize(['[00:00] Me: hi'], layout.names(config.dayFolder(), 'x.'));
   assert.strictEqual(s.s.summaryNote, 'Too little speech for a summary.');
 });
 
 test('summary failure keeps the transcript and offers Copy for Claude', async () => {
   const { s } = makeSession({ summarize: async () => { throw new Error('Ollama isn\'t running.'); } });
   const lines = Array.from({ length: 5 }, (_, i) => `[00:0${i}] Me: ${'word '.repeat(6)}`);
-  await s.summarize(lines, 'x', config.dayFolder());
+  await s.summarize(lines, layout.names(config.dayFolder(), 'x.'));
   assert.match(s.s.summaryNote, /No summary: Ollama isn't running\./);
   assert.match(s.copyForClaudeText(), /Transcript:\n\[00:00\] Me:/);
 });
@@ -188,7 +189,7 @@ test('recordings folder can be chosen, validated and reset', async () => {
   s.setSetting('outputRoot', target);
   assert.strictEqual(config.rootDir(), target);
   await s.toggle(false); feed(s, 4); await s.toggle(false);
-  assert.ok(fs.readdirSync(config.dayFolder(target)).some((f) => f.endsWith('.mp3')));
+  assert.ok(fs.existsSync(path.join(lastCall(target), 'audio.mp3')));
   s.setSetting('outputRoot', '');
   assert.notStrictEqual(config.rootDir(), target);
   process.env.CALLREC_DIR = envDir;
@@ -210,13 +211,12 @@ test('glossary correction fixes only validated terms, keeps the original, and sh
   const { s } = makeSession({ glossary: async (l) => glossary.correct(l, { terms: ['SAFe', 'Luxoft'], generate: async () => answers }) });
   s.settings.glossaryCorrect = true;
   const d = path.join(dir, 'gl'); fs.mkdirSync(d, { recursive: true });
-  const out = await s.glossaryFix(lines, 'Call_x', d);
+  const P = layout.names(d);
+  const out = await s.glossaryFix(lines, P);
   assert.match(out[0], /with SAFe and/);
-  assert.strictEqual(fs.readFileSync(path.join(d, 'Call_x.uncorrected.txt'), 'utf8'), lines.join('\n'));
-  assert.match(fs.readFileSync(path.join(d, 'Call_x.txt'), 'utf8'), /Luxoft agrees/);
   assert.match(s.s.checkNote, /2 correction\(s\): safe → SAFe, Luxsoft → Luxoft/);
   const off = makeSession({ glossary: async () => { throw new Error('should not run'); } });
-  assert.deepStrictEqual(await off.s.glossaryFix(lines, 'Call_y', d), lines);   // setting is off
+  assert.deepStrictEqual(await off.s.glossaryFix(lines, P), lines);   // setting is off
 });
 
 test('glossary: a term already spelled correctly is never changed and no fixes means no change', () => {
@@ -235,4 +235,28 @@ test('cancelling the area selection saves nothing', async () => {
   assert.strictEqual(s.s.shotCount, 0);
   assert.match(s.s.status, /cancelled/);
   await s.toggle(false);
+});
+
+test('fixed_transcript.txt holds the glossary-corrected text, raw_transcript.txt the original; rename updates both', async () => {
+  const glossary = require('../src/lib/glossary');
+  const answers = JSON.stringify([{ wrong: 'Luxsoft', right: 'Luxoft', context: 'and Luxsoft agrees' }]);
+  const { s } = makeSession({
+    whisper: { transcribeFileWithSpeakers: async () => ['[00:00] Speaker 1: we met and Luxsoft agrees with the plan we made today', '[00:09] Speaker 2: fine by me'] },
+    glossary: async (l) => glossary.correct(l, { terms: ['Luxoft'], generate: async () => answers }),
+  });
+  s.settings.glossaryCorrect = true;
+  const d = path.join(dir, 'files'); fs.mkdirSync(d, { recursive: true });
+  const audio = path.join(d, 'audio.mp3'); fs.writeFileSync(audio, 'x');
+  await s.transcribeFile(audio);
+  assert.match(fs.readFileSync(path.join(d, 'raw_transcript.txt'), 'utf8'), /Luxsoft/);
+  assert.match(fs.readFileSync(path.join(d, 'fixed_transcript.txt'), 'utf8'), /Luxoft agrees/);
+  s.renameSpeaker('Speaker 2', 'Anna');
+  for (const f of ['raw_transcript.txt', 'fixed_transcript.txt']) assert.match(fs.readFileSync(path.join(d, f), 'utf8'), /\] Anna: fine by me/);
+});
+
+test('an audio file from elsewhere gets prefixed names next to it', () => {
+  const P = layout.namesForAudio(path.join('x', 'meeting.mp3'));
+  assert.strictEqual(path.basename(P.raw), 'meeting.raw_transcript.txt');
+  assert.strictEqual(path.basename(P.summary), 'meeting.summary.md');
+  assert.strictEqual(path.basename(layout.namesForAudio(path.join('x', 'audio.mp3')).fixed), 'fixed_transcript.txt');
 });

@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('./lib/config');
+const layout = require('./lib/layout');
 const tools = require('./lib/tools');
 const whisper = require('./lib/whisper');
 const text = require('./lib/text');
@@ -49,7 +50,7 @@ class Session {
     this.transcribers = [];
     this.tracks = null;
     this.summaryTranscript = '';
-    this.lastTranscriptFile = null;
+    this.transcriptFiles = new Set();
     this.outDir = config.dayFolder();
     this.timer = null;
   }
@@ -111,7 +112,7 @@ class Session {
     try {
       this.lines = []; this.openLine = {};
       this.outDir = config.dayFolder();
-      this.summaryTranscript = ''; this.lastTranscriptFile = null; this.shots = [];
+      this.summaryTranscript = ''; this.transcriptFiles = new Set(); this.shots = [];
       this.set({ finalLines: [], partials: {}, liveMode: live, summaryText: '', summaryNote: '', checkNote: '',
         speakerLabels: [], sysSeconds: 0, micSeconds: 0, shotCount: 0 });
       if (live) {
@@ -121,7 +122,7 @@ class Session {
           return;
         }
       }
-      this.baseName = 'Call_' + config.timeStamp();
+      this.P = layout.names(layout.newCallFolder());
       this.tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'callrec-'));
       this.tracks = {};
       for (const name of ['system', 'mic']) {
@@ -184,7 +185,7 @@ class Session {
       const png = await this.hooks.captureScreen();
       if (!png) { this.set({ status: 'Screenshot cancelled.' }); return null; }
       const t = (Date.now() - this.sessionStart) / 1000;
-      const dir = path.join(this.outDir, this.baseName + '_screens');
+      const dir = this.P.shotsDir;
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${String(this.shots.length + 1).padStart(2, '0')}_${fmtTime(t).replace(':', '-')}.png`);
       fs.writeFileSync(file, png);
@@ -226,10 +227,9 @@ class Session {
     const shots = this.shots.slice();
     const sinks = this.transcribers; this.transcribers = [];
     const finishing = Promise.all(sinks.map((s) => s.finish()));
-    const base = this.baseName;
-    const dir = this.outDir;
+    const P = this.P;
     const live = this.s.liveMode;
-    const mp3 = path.join(dir, base + '.mp3');
+    const mp3 = P.audio('mp3');
     const keepTracks = live && this.settings.verifyAfterLive;
     const wavs = { system: null, mic: null };
     let mp3Saved = false;
@@ -254,23 +254,22 @@ class Session {
       this.deps.server.stop();
       for (const [label, t] of Object.entries(this.s.partials)) if (t) this.handleEvent({ label, commit: t, tail: '', newLine: true });
       this.set({ partials: {} });
-      const txt = path.join(dir, base + '.txt');
-      fs.writeFileSync(txt, this.s.finalLines.join('\n'));
-      this.lastTranscriptFile = txt;
-      if (mp3Saved) this.set({ status: `Saved ${path.basename(mp3)} + ${path.basename(txt)}` });
+      fs.writeFileSync(P.live, this.s.finalLines.join('\n'));
+      this.writeTranscript(P.raw, this.s.finalLines);
+      if (mp3Saved) this.set({ status: `Saved ${path.basename(mp3)} + ${path.basename(P.raw)}` });
 
       const liveLines = this.s.finalLines.slice();
       if (this.settings.verifyAfterLive && (wavs.system || wavs.mic)) {
         const tmp = this.tmp; this.tmp = null; this.tracks = null;     // the check pass owns the temp files now
         this.set({ busy: false });
-        const verified = await this.verify({ base, dir, system: wavs.system, mic: wavs.mic, live: liveLines });
+        const verified = await this.verify({ P, system: wavs.system, mic: wavs.mic, live: liveLines });
         fs.rmSync(tmp, { recursive: true, force: true });
-        await this.finishCall(verified, base, dir, shots);
+        await this.finishCall(verified, P, shots);
         return;
       }
       this.cleanupTracks();
       this.set({ busy: false });
-      await this.finishCall(liveLines, base, dir, shots);
+      await this.finishCall(liveLines, P, shots);
       return;
     }
 
@@ -327,7 +326,7 @@ class Session {
 
   // ---- check pass / file transcription / summary -------------------------------------------------------------------
 
-  async verify({ base, dir, system, mic, live }) {
+  async verify({ P, system, mic, live }) {
     if (!this.deps.isReady()) {
       this.set({ checkNote: 'Transcript check skipped: Whisper isn\'t set up (run setup-whisper.ps1).' });
       return live;
@@ -355,17 +354,15 @@ class Session {
         this.set({ checkNote: 'Transcript check heard no speech; the live transcript was kept.' + note });
         return live;
       }
-      fs.writeFileSync(path.join(dir, base + '.live.txt'), live.join('\n'));
-      const file = path.join(dir, base + '.txt');
-      fs.writeFileSync(file, lines.join('\n'));
+      fs.writeFileSync(P.live, live.join('\n'));
+      this.writeTranscript(P.raw, lines);
       if (!this.s.isRecording) {                 // do not clobber the view of a call that started meanwhile
-        this.lastTranscriptFile = file;
         this.set({ finalLines: lines });
         this.refreshSpeakers();
       }
       const wc = (ls) => ls.reduce((n, l) => n + (l.split(']: ').pop() || '').split(/\s+/).filter(Boolean).length, 0);
-      this.set({ checkNote: `Checked: ${base}.txt now has the verified transcript (${wc(live)} → ${wc(lines)} words). ` +
-        `The live version is saved as ${base}.live.txt.` + note });
+      this.set({ checkNote: `Checked: ${path.basename(P.raw)} now has the verified transcript (${wc(live)} → ${wc(lines)} words). ` +
+        `The live version is saved as ${path.basename(P.live)}.` + note });
       return lines;
     } catch (e) {
       this.set({ checkNote: `Transcript check failed: ${e.message}. The live transcript was kept.` });
@@ -376,7 +373,7 @@ class Session {
   async transcribeFile(file, { shots = [] } = {}) {
     if (this.s.busy) return;
     this.set({ busy: true, summaryText: '', summaryNote: '', checkNote: '' });
-    let lines = null; const base = path.basename(file, path.extname(file)); const dir = path.dirname(file);
+    let lines = null; const P = layout.namesForAudio(file);
     try {
       if (!this.deps.isReady()) { this.set({ status: this.whisperHint() }); return; }
       const lang = config.languageCode(this.settings.language);
@@ -396,10 +393,8 @@ class Session {
         lines = out.includes('\n\n') ? out.split('\n\n') : out.split('\n');
       }
       if (!out) { this.set({ status: `No speech recognized in ${path.basename(file)}` }); lines = null; return; }
-      const target = path.join(dir, base + '.txt');
-      fs.writeFileSync(target, out);
-      this.lastTranscriptFile = target;
-      this.set({ finalLines: lines, status: `Saved ${path.basename(target)}` });
+      this.writeTranscript(P.raw, lines);
+      this.set({ finalLines: lines, status: `Saved ${path.basename(P.raw)}` });
       this.refreshSpeakers();
     } catch (e) {
       this.set({ status: `Transcription failed: ${e.message}` });
@@ -407,17 +402,25 @@ class Session {
     } finally {
       this.set({ busy: false });
     }
-    if (lines) await this.finishCall(lines, base, dir, shots);
+    if (lines) await this.finishCall(lines, P, shots);
   }
 
   /** After the transcript is final: glossary correction, then the summary. */
-  async finishCall(lines, base, dir, shots = []) {
-    const fixed = await this.glossaryFix(lines, base, dir);
-    await this.summarize(fixed, base, dir, shots);
+  async finishCall(lines, P, shots = []) {
+    const fixed = await this.glossaryFix(lines, P);
+    this.writeTranscript(P.fixed, fixed);                     // always written: equals the raw one when nothing was fixed
+    if (!this.s.isRecording) { this.set({ finalLines: fixed }); this.refreshSpeakers(); }
+    await this.summarize(fixed, P, shots);
+  }
+
+  /** Writes a transcript file and remembers it, so renaming a speaker updates every copy. */
+  writeTranscript(file, lines) {
+    fs.writeFileSync(file, lines.join('\n'));
+    this.transcriptFiles.add(file);
   }
 
   /** Fixes misheard glossary terms (Vocabulary… file) with the local model. The uncorrected text is kept. */
-  async glossaryFix(lines, base, dir) {
+  async glossaryFix(lines, P) {
     if (!this.settings.glossaryCorrect) return lines;
     text.ensureVocabularyFile();
     if (!text.vocabularyTerms().length) return lines;
@@ -427,11 +430,7 @@ class Session {
     try {
       const { lines: out, changes } = await this.deps.glossary(lines, {});
       if (!changes.length) { note('Glossary check: no corrections needed.'); return lines; }
-      fs.writeFileSync(path.join(dir, base + '.uncorrected.txt'), lines.join('\n'));
-      const file = path.join(dir, base + '.txt');
-      fs.writeFileSync(file, out.join('\n'));
-      if (!this.s.isRecording) { this.lastTranscriptFile = file; this.set({ finalLines: out }); this.refreshSpeakers(); }
-      note(`Glossary: ${changes.length} correction(s): ${changes.map((c) => `${c.wrong} → ${c.right}`).join(', ')}. Original kept as ${base}.uncorrected.txt.`);
+      note(`Glossary: ${changes.length} correction(s): ${changes.map((c) => `${c.wrong} → ${c.right}`).join(', ')}. Original kept as ${path.basename(P.raw)}.`);
       return out;
     } catch (e) {
       note(`Glossary check skipped: ${e.message}`);
@@ -468,7 +467,7 @@ class Session {
     return all.map((x) => x.l);
   }
 
-  async summarize(lines, base, dir, shots = []) {
+  async summarize(lines, P, shots = []) {
     if (!this.settings.summarizeCalls) return;
     const topic = this.s.topic;
     let described = { lines: [], note: '' };
@@ -476,7 +475,7 @@ class Session {
       this.set({ summaryText: '', summaryNote: 'Describing the screenshots with a local vision model…' });
       described = await this.describeShots(shots, topic);
       if (described.lines.length) {
-        try { fs.writeFileSync(path.join(dir || this.outDir, base + '.screens.txt'), described.lines.join('\n')); } catch { /* ignore */ }
+        try { fs.mkdirSync(path.dirname(P.shotsText), { recursive: true }); fs.writeFileSync(P.shotsText, described.lines.join('\n')); } catch { /* ignore */ }
       }
     }
     const all = described.lines.length ? Session.mergeByTime(lines, described.lines) : lines;
@@ -491,7 +490,7 @@ class Session {
     try {
       const body = await this.deps.summarize(transcript, { topic });
       const md = (topic ? `**Topic:** ${topic.replace(/\s+/g, ' ')}\n\n` : '') + body;
-      const file = path.join(dir || this.outDir, base + '.summary.md');
+      const file = P.summary;
       fs.writeFileSync(file, md);
       this.set({ summaryText: md, summaryNote: [`Summary saved as ${path.basename(file)}.`, described.note].filter(Boolean).join(' ') });
     } catch (e) {
@@ -517,7 +516,9 @@ class Session {
     if (!name || name === oldName) return;
     const finalLines = this.s.finalLines.map((l) => l.split(`] ${oldName}: `).join(`] ${name}: `));
     this.set({ finalLines });
-    if (this.lastTranscriptFile) { try { fs.writeFileSync(this.lastTranscriptFile, finalLines.join('\n')); } catch { /* ignore */ } }
+    for (const f of this.transcriptFiles) {
+      try { fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`] ${oldName}: `).join(`] ${name}: `)); } catch { /* ignore */ }
+    }
     this.refreshSpeakers();
     this.set({ status: `Renamed ${oldName} to ${name}` });
   }

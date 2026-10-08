@@ -49,11 +49,11 @@ final class AppState: ObservableObject {
     @Published var shotCount = 0
     struct Shot { var t: Double; var file: URL }
     private var shots: [Shot] = []
-    private var shotsByBase: [String: [Shot]] = [:]      // kept until that call's summary is made
-    private var topicByBase: [String: String] = [:]
+    private var shotsByCall: [String: [Shot]] = [:]      // kept until that call's summary is made
+    private var topicByCall: [String: String] = [:]
+    private var transcriptFiles: Set<URL> = []              // every transcript file of the shown call (rename updates all)
     var summaryTopic = ""
     @Published var speakerLabels: [String] = []
-    var lastTranscriptURL: URL?
     @Published var identifySpeakers: Bool {
         didSet { UserDefaults.standard.set(identifySpeakers, forKey: "speakers") }
     }
@@ -75,7 +75,7 @@ final class AppState: ObservableObject {
 
     static func defaultRoot() -> URL {
         let fm = FileManager.default
-        let preferred = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder/CallRecordings", isDirectory: true)
+        let preferred = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder/recordings", isDirectory: true)
         if (try? fm.createDirectory(at: preferred, withIntermediateDirectories: true)) != nil {
             try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: preferred.path)   // owner only
             return preferred
@@ -139,7 +139,8 @@ final class AppState: ObservableObject {
     private struct Line { var t: Double; var label: String; var text: String }
     private var lines: [Line] = []
     private var openLine: [String: Int] = [:]      // label -> index of its current line in `lines`
-    private var baseName = ""
+    private var tempName = ""                // names the temporary audio tracks
+    private var files = CallFiles(dir: FileManager.default.temporaryDirectory)
     private var startDate = Date()
     private var timer: Timer?
 
@@ -197,6 +198,7 @@ final class AppState: ObservableObject {
         partials = [:]
         liveMode = live
         outDir = Self.dayFolder(in: rootDir)
+        transcriptFiles = []
         summaryText = ""; summaryNote = ""; summaryTranscript = ""
         checkNote = ""; speakerLabels = []
         shots = []; shotCount = 0
@@ -230,8 +232,8 @@ final class AppState: ObservableObject {
 
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        baseName = "Call_" + stamp.string(from: Date())
-        let session = CaptureSession(tempDir: FileManager.default.temporaryDirectory, baseName: baseName)
+        tempName = "Call_" + stamp.string(from: Date())
+        let session = CaptureSession(tempDir: FileManager.default.temporaryDirectory, baseName: tempName)
 
         if live {
             for s in sinks {
@@ -257,6 +259,7 @@ final class AppState: ObservableObject {
             return
         }
 
+        files = CallFiles.newCall(in: rootDir)          // created only once recording really started
         capture = session
         startDate = Date()
         isRecording = true
@@ -296,9 +299,10 @@ final class AppState: ObservableObject {
         transcribers = []
         let finishing = Task { for s in sinks { await s.finish() } }
 
-        if !shots.isEmpty { shotsByBase[baseName] = shots }
-        topicByBase[baseName] = topic
-        let mp3 = outDir.appendingPathComponent(baseName + ".mp3")
+        let call = files
+        if !shots.isEmpty { shotsByCall[call.key] = shots }
+        topicByCall[call.key] = topic
+        let mp3 = call.audio()
         status = "Converting to MP3…"
         do {
             try await Self.mixToMP3(system: session.hasSystemAudio ? session.systemURL : nil,
@@ -322,23 +326,22 @@ final class AppState: ObservableObject {
                 handle(LiveEvent(label: label, commit: text, newLine: true))
             }
             partials = [:]
-            let txt = outDir.appendingPathComponent(baseName + ".txt")
-            try? finalLines.joined(separator: "\n").write(to: txt, atomically: true, encoding: .utf8)
-            if lastFile != nil { status = "Saved \(mp3.lastPathComponent) + \(txt.lastPathComponent)" }
+            try? finalLines.joined(separator: "\n").write(to: call.live, atomically: true, encoding: .utf8)
+            writeTranscript(finalLines, to: call.raw)
+            if lastFile != nil { status = "Saved \(mp3.lastPathComponent) + \(call.raw.lastPathComponent)" }
 
             if verifyAfterLive, session.hasSystemAudio || session.hasMicAudio {
                 let live = finalLines
                 let system = session.hasSystemAudio ? session.systemURL : nil
                 let mic = session.hasMicAudio ? session.micURL : nil
-                let base = baseName
                 let delete = lastFile != nil
                 Task {
-                    let verified = await self.verify(base: base, system: system, mic: mic, live: live, deleteTracks: delete)
-                    await self.finishCall(lines: verified, base: base)
+                    let verified = await self.verify(call, system: system, mic: mic, live: live, deleteTracks: delete)
+                    await self.finishCall(lines: verified, call)
                 }
             } else {
-                let live = finalLines, base = baseName
-                Task { await self.finishCall(lines: live, base: base) }
+                let live = finalLines
+                Task { await self.finishCall(lines: live, call) }
             }
         } else if summarizeCalls, let mp3 = lastFile {
             // Plain recording: transcribe it now (the summary follows), so every call gets one.
@@ -431,16 +434,15 @@ final class AppState: ObservableObject {
                 status = "No speech recognized in \(url.lastPathComponent)"
                 return
             }
-            let out = url.deletingPathExtension().appendingPathExtension("txt")
-            try text.write(to: out, atomically: true, encoding: .utf8)
+            let call = CallFiles.forAudio(url)
+            let out = call.raw
             finalLines = text.contains("\n\n") ? text.components(separatedBy: "\n\n") : text.components(separatedBy: "\n")
-            lastTranscriptURL = out
+            transcriptFiles = []
+            writeTranscript(finalLines, to: out)
             refreshSpeakers()
             status = "Saved \(out.lastPathComponent)"
-            let done = finalLines, name = url.deletingPathExtension().lastPathComponent
-            let dir = url.deletingLastPathComponent()
-            Task { await self.finishCall(lines: done, base: name, dir: dir) }
-            if !summarizeCalls { NSWorkspace.shared.activateFileViewerSelecting([out]) }
+            let done = finalLines
+            Task { await self.finishCall(lines: done, call) }
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
         }
@@ -462,13 +464,15 @@ final class AppState: ObservableObject {
         speakerLabels = seen
     }
 
-    /// Renames a speaker in the shown transcript and in the saved .txt file.
+    /// Renames a speaker in the shown transcript and in the saved transcript files.
     func renameSpeaker(_ old: String, to new: String) {
         let name = new.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != old else { return }
         finalLines = finalLines.map { $0.replacingOccurrences(of: "] \(old): ", with: "] \(name): ") }
-        if let url = lastTranscriptURL {
-            try? finalLines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        for url in transcriptFiles {          // raw and fixed copies both get the name
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            try? content.replacingOccurrences(of: "] \(old): ", with: "] \(name): ")
+                .write(to: url, atomically: true, encoding: .utf8)
         }
         refreshSpeakers()
         status = "Renamed \(old) to \(name)"
@@ -496,9 +500,9 @@ final class AppState: ObservableObject {
     }
 
     /// After a live recording: re-transcribe both tracks with the accurate model and replace the transcript.
-    /// The live version is kept next to it as ".live.txt".
+    /// The live version is kept next to it as "live_transcript.txt".
     @discardableResult
-    private func verify(base: String, system: URL?, mic: URL?, live: [String], deleteTracks: Bool) async -> [String] {
+    private func verify(_ call: CallFiles, system: URL?, mic: URL?, live: [String], deleteTracks: Bool) async -> [String] {
         defer {
             if deleteTracks {
                 if let system { try? FileManager.default.removeItem(at: system) }
@@ -538,18 +542,15 @@ final class AppState: ObservableObject {
                 checkNote = "Transcript check heard no speech; the live transcript was kept."
                 return live
             }
-            try live.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".live.txt"),
-                                                  atomically: true, encoding: .utf8)
-            try lines.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".txt"),
-                                                   atomically: true, encoding: .utf8)
+            try live.joined(separator: "\n").write(to: call.live, atomically: true, encoding: .utf8)
+            writeTranscript(lines, to: call.raw)
             if !isRecording {
                 finalLines = lines
-                lastTranscriptURL = outDir.appendingPathComponent(base + ".txt")
                 refreshSpeakers()
             }
             let before = Self.wordCount(live), after = Self.wordCount(lines)
-            checkNote = "Checked: \(base).txt now has the verified transcript (\(before) → \(after) words). "
-                      + "The live version is saved as \(base).live.txt." + diarizeNote
+            checkNote = "Checked: \(call.raw.lastPathComponent) now has the verified transcript (\(before) → \(after) words). "
+                      + "The live version is saved as \(call.live.lastPathComponent)." + diarizeNote
             return lines
         } catch {
             checkNote = "Transcript check failed: \(error.localizedDescription). The live transcript was kept."
@@ -560,13 +561,21 @@ final class AppState: ObservableObject {
     // MARK: Glossary + summary
 
     /// After the transcript is final: glossary correction, then the summary.
-    func finishCall(lines: [String], base: String, dir: URL? = nil) async {
-        let fixed = await glossaryFix(lines, base: base, dir: dir ?? outDir)
-        await summarize(lines: fixed, base: base, dir: dir)
+    func finishCall(lines: [String], _ call: CallFiles) async {
+        let fixed = await glossaryFix(lines, call)
+        writeTranscript(fixed, to: call.fixed)          // always written: equals the raw one when nothing was fixed
+        if !isRecording { finalLines = fixed; refreshSpeakers() }
+        await summarize(lines: fixed, call)
+    }
+
+    /// Writes a transcript file and remembers it, so renaming a speaker updates every copy.
+    private func writeTranscript(_ lines: [String], to url: URL) {
+        try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        transcriptFiles.insert(url)
     }
 
     /// Fixes misheard glossary terms (the Vocabulary… file) with the local model. The uncorrected text is kept.
-    private func glossaryFix(_ lines: [String], base: String, dir: URL) async -> [String] {
+    private func glossaryFix(_ lines: [String], _ call: CallFiles) async -> [String] {
         guard glossaryCorrect else { return lines }
         _ = WhisperEngine.ensureVocabularyFile()
         let terms = WhisperEngine.vocabularyTerms()
@@ -577,18 +586,9 @@ final class AppState: ObservableObject {
         do {
             let r = try await Glossary.correct(lines, terms: terms)
             guard !r.changes.isEmpty else { note("Glossary check: no corrections needed."); return lines }
-            try lines.joined(separator: "\n").write(to: dir.appendingPathComponent(base + ".uncorrected.txt"),
-                                                    atomically: true, encoding: .utf8)
-            let file = dir.appendingPathComponent(base + ".txt")
-            try r.lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
-            if !isRecording {
-                finalLines = r.lines
-                lastTranscriptURL = file
-                refreshSpeakers()
-            }
             note("Glossary: \(r.changes.count) correction(s): "
                  + r.changes.map { "\($0.wrong) → \($0.right)" }.joined(separator: ", ")
-                 + ". Original kept as \(base).uncorrected.txt.")
+                 + ". Original kept as \(call.raw.lastPathComponent).")
             return r.lines
         } catch {
             note("Glossary check skipped: \(error.localizedDescription)")
@@ -596,12 +596,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Summarizes a finished transcript with the local Ollama model and saves `<base>.summary.md`.
-    func summarize(lines: [String], base: String, dir: URL? = nil) async {
-        let callShots = shotsByBase.removeValue(forKey: base) ?? []
-        let callTopic = topicByBase.removeValue(forKey: base) ?? topic
+    /// Summarizes a finished transcript with the local Ollama model and saves summary.md.
+    func summarize(lines: [String], _ call: CallFiles) async {
+        let callShots = shotsByCall.removeValue(forKey: call.key) ?? []
+        let callTopic = topicByCall.removeValue(forKey: call.key) ?? topic
         guard summarizeCalls else { return }
-        let folder = dir ?? outDir
 
         var all = lines
         var shotNote = ""
@@ -611,8 +610,8 @@ final class AppState: ObservableObject {
             let (described, note) = await describeShots(callShots, topic: callTopic)
             shotNote = note
             if !described.isEmpty {
-                try? described.joined(separator: "\n").write(to: folder.appendingPathComponent(base + ".screens.txt"),
-                                                            atomically: true, encoding: .utf8)
+                try? FileManager.default.createDirectory(at: call.shotsText.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? described.joined(separator: "\n").write(to: call.shotsText, atomically: true, encoding: .utf8)
                 all = Self.mergeByTime(lines, described)
             }
         }
@@ -630,7 +629,7 @@ final class AppState: ObservableObject {
             var text = try await Summarizer.summarize(transcript: transcript, topic: callTopic)
             let t = callTopic.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             if !t.isEmpty { text = "**Topic:** \(t)\n\n" + text }
-            let url = folder.appendingPathComponent(base + ".summary.md")
+            let url = call.summary
             try text.write(to: url, atomically: true, encoding: .utf8)
             summaryText = text
             summaryNote = (["Summary saved as \(url.lastPathComponent).", shotNote]).filter { !$0.isEmpty }.joined(separator: " ")
@@ -685,7 +684,7 @@ final class AppState: ObservableObject {
     func takeScreenshot() async {
         guard isRecording else { status = "Screenshots can be taken while a recording is running."; return }
         let t = Date().timeIntervalSince(startDate)
-        let dir = outDir.appendingPathComponent(baseName + "_screens", isDirectory: true)
+        let dir = files.shotsDir
         let name = String(format: "%02d_", shots.count + 1) + Self.timeText(t).replacingOccurrences(of: ":", with: "-") + ".png"
         let file = dir.appendingPathComponent(name)
         do {
@@ -702,7 +701,9 @@ final class AppState: ObservableObject {
             shotCount = shots.count
             status = "Screenshot \(shots.count) saved at \(Self.timeText(t))"
         } else {
-            try? FileManager.default.removeItem(at: dir)         // empty folder if nothing was saved
+            if let left = try? FileManager.default.contentsOfDirectory(atPath: dir.path), left.isEmpty {
+                try? FileManager.default.removeItem(at: dir)         // don't leave an empty folder behind
+            }
             status = "Screenshot cancelled."
         }
     }

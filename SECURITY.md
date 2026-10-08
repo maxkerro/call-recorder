@@ -8,8 +8,8 @@ compiled or run in that review. This is a code review, not a penetration test.
 
 | Data | Where it lives | Leaves the computer? |
 |------|----------------|----------------------|
-| Call audio and microphone | temporary files (deleted after the MP3 and the check pass), then the MP3 in `CallRecordings/<date>/` | No |
-| Transcripts, summaries | `CallRecordings/<date>/*.txt`, `*.summary.md`; `live-debug.log` contains recognised text too | No |
+| Call audio and microphone | temporary files (deleted after the MP3 and the check pass), then `audio.mp3` in `recordings/<date>/<time>/` (Windows: `CallRecordings\<date>\<time>\`) | No |
+| Transcripts, summaries | `<call folder>/raw_transcript.txt`, `fixed_transcript.txt`, `summary.md`; `live-debug.log` contains recognised text too | No |
 | Speech recognition | `whisper-cli` / `whisper-server` (whisper.cpp), started by the app; server listens on 127.0.0.1 only | No |
 | Speaker recognition | Mac: FluidAudio (Core ML). Windows: sherpa-onnx. Both on the CPU/GPU/Neural Engine, in-process | No |
 | Summaries | Ollama on 127.0.0.1:11434. An address that is not local is refused (Windows code; the Mac code has a fixed local address) | No |
@@ -46,7 +46,7 @@ A download request reveals that you use these tools (and your IP address) to the
 ## Screenshots and the folder setting (added later)
 
 - Screenshots are taken only on your keypress, saved next to the recording, and sent only to Ollama on 127.0.0.1 for a text
-  description. They may show confidential slides: they live in `<name>_screens/` with the recording, so protect or delete them like the audio.
+  description. They may show confidential slides: they live in the call's `screenshots/` folder with the recording, so protect or delete them like the audio.
 - The recordings folder can be changed in the app. If you choose a cloud-synced folder (OneDrive, iCloud, Dropbox…) the app warns,
   because that would upload your calls.
 
@@ -60,7 +60,7 @@ A download request reveals that you use these tools (and your IP address) to the
 - **Clipboard:** Windows clipboard history with "sync across devices" and macOS Universal Clipboard can pass what you
   copied to your other devices. Paste into a Claude chat only what you are willing to share with Anthropic.
 - **`live-debug.log`** contains recognised text. It is git-ignored; delete it when you are done debugging.
-- **The repository is public.** `.gitignore` excludes `CallRecordings/` and `live-debug.log`; run `git status` before
+- **The repository is public.** `.gitignore` excludes `recordings/`, `CallRecordings/` and `live-debug.log`; run `git status` before
   every commit and never use `git add -f` on them.
 - **Unsigned builds:** the Mac app is ad-hoc signed and the Windows build is unsigned, so nothing protects the app
   file from being replaced by another program running as you. Build from source yourself; enable 2FA on GitHub.

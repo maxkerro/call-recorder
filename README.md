@@ -34,7 +34,21 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 | 3. Live transcript + MP3 | **⇧⌥T**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
 | 4. Screenshot into the summary | **⇧⌥S** or the button, while recording. See "Screenshots" below. |
 
-Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy-MM-dd>/` (one subfolder per day; git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Pick the language (English, Deutsch, Русский) in the menu before recording.
+Files go to `/Users/mmasliukov/Private/claude/call-recorder/recordings/` (git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Every call gets its own folder, `<yyyy-MM-dd>/<HH-mm-ss>/`:
+
+```
+recordings/2026-10-08/14-30-05/
+  audio.mp3               the call (both sides + your microphone)
+  raw_transcript.txt      the transcript as recognised (after the accurate check pass)
+  fixed_transcript.txt    the same with glossary corrections (identical if nothing needed fixing)
+  summary.md              the summary
+  screenshots/            your selected areas (01_05-12.png …) and descriptions.txt
+  live_transcript.txt     live recordings only: the live version, before the check pass
+```
+
+An audio file you transcribe from elsewhere gets the same files next to it, named `<name>.raw_transcript.txt`, `<name>.summary.md` and so on.
+
+Pick the language (English, Deutsch, Русский) in the menu before recording. Recordings made with older versions stay where they were, in `CallRecordings/`.
 **Save to:** → **Choose…** picks another folder for recordings (a subfolder per day is created inside it); **Default** goes back to the folder above. A folder that looks cloud-synced (iCloud, Dropbox, OneDrive…) gets a warning, because your calls would be uploaded.
 
 ## Permissions (first launch)
@@ -69,7 +83,7 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   for example `! Subtitles by the Amara.org community`.
 - **Transcript check:** after a live recording the app re-transcribes the call-audio track and your microphone
   track separately with the accurate model, which fills in words the live view missed, and replaces the transcript
-  (`<name>.txt`, labelled "Them"/"Me"). The live version stays as `<name>.live.txt`. It runs in the background and
+  (`raw_transcript.txt`, labelled "Them"/"Me"). The live version stays as `live_transcript.txt`. It runs in the background and
   takes a few minutes for long calls; switch it off with the checkbox in the menu.
 - **Speakers:** with "Recognize speakers" on, the call-audio track is analysed locally (FluidAudio) and its lines are
   labelled "Speaker 1", "Speaker 2"… instead of "Them"; your microphone stays "Me". For "Transcribe file…" every voice,
@@ -79,17 +93,17 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   interjection inside a long segment may be attributed to the main speaker, and several people sharing your
   microphone in one room all show as "Me" (use "Transcribe file…" on the MP3 to split them).
 - **Summary:** when a call has been transcribed (a plain "Record to MP3" is transcribed automatically afterwards),
-  the app writes `<name>.summary.md` (summary, key points, decisions, action items, open questions) using a local
+  the app writes `summary.md` (summary, key points, decisions, action items, open questions) using a local
   model served by [Ollama](https://ollama.com), so nothing leaves your Mac. One-time setup:
   `brew install ollama && brew services start ollama && ollama pull qwen2.5:7b` (`qwen2.5:14b` is better if you have
   16 GB+ RAM). Without Ollama, **Copy for Claude** puts the instructions + transcript on the clipboard to paste into a
   Claude chat. Turn it off with the "Summarize each call" checkbox.
 - **Topic:** type what the call is about into the *Topic* field before (or during) the call. The summary is then organised
-  around it, with off-topic items mentioned briefly, and the topic is printed at the top of `<name>.summary.md`.
+  around it, with off-topic items mentioned briefly, and the topic is printed at the top of `summary.md`.
 - **Screenshots:** while recording, press **⇧⌥S** (or the button) when someone shares a slide or a picture. Drag a rectangle around just the relevant part (Esc cancels); only that
-  area is saved in `<name>_screens/` next to the recording. After the call a local vision model in Ollama describes each
+  area is saved in the call's `screenshots/` folder. After the call a local vision model in Ollama describes each
   image (`ollama pull qwen2.5vl:7b`; llama3.2-vision, gemma3 and llava also work), the descriptions are added to the transcript as
-  `[mm:ss] [Screen] …` lines (also saved as `<name>.screens.txt`) and used in the summary. Without a vision model the images are
+  `[mm:ss] [Screen] …` lines (also saved as `screenshots/descriptions.txt`) and used in the summary. Without a vision model the images are
   still saved. Images are only ever sent to Ollama on 127.0.0.1. Screenshots of slides can contain confidential data: they are kept
   with the recording, so treat that folder accordingly.
 - **Silence and typing:** very short phrases such as "Thank you" or "Danke" that Whisper invents on keyboard noise are dropped when the
@@ -97,7 +111,7 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
 - **Glossary correction:** after a call is transcribed, the local Ollama model compares the transcript with the terms in your
   **Vocabulary…** file and points out misheard ones ("safe" → "SAFe", "Luxsoft" → "Luxoft"). The model only *suggests*; the app
   checks every suggestion (the replacement must be a glossary term, the quoted phrase must really be in the transcript) and applies
-  it inside that phrase only, so the text is never rewritten. `<name>.txt` gets the corrected text, `<name>.uncorrected.txt` keeps the
+  it inside that phrase only, so the text is never rewritten. `fixed_transcript.txt` gets the corrected text, `raw_transcript.txt` keeps the
   original, and the window lists what changed. Switch it off with the "Fix glossary terms" checkbox. Keep the glossary to real names
   and jargon; very common words make poor entries.
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
