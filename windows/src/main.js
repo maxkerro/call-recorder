@@ -175,6 +175,7 @@ app.whenReady().then(() => {
     startCapture: () => rpc('capture:start'),
     stopCapture: () => rpc('capture:stop'),
     captureScreen: captureScreen,
+    setOpacity: (v) => { if (win && !win.isDestroyed()) win.setOpacity(v); },
   });
 
   const trusted = (e) => !!e.senderFrame && isOurPage(e.senderFrame.url);
@@ -212,6 +213,7 @@ app.whenReady().then(() => {
   handle('about', () => ({ ...appinfo }));
 
   createWindow();
+  win.setOpacity(config.loadSettings().windowOpacity || 1);
   buildTray();
   registerHotKeys();
 

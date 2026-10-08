@@ -107,6 +107,7 @@ struct MenuView: View {
         .controlSize(.large)
         .padding(14)
         .frame(width: 600)
+        .onAppear { DispatchQueue.main.async { state.applyOpacity() } }
     }
 
     // MARK: Recorder
@@ -230,6 +231,14 @@ struct MenuView: View {
         }
         .buttonStyle(.bordered)
         .fixedSize(horizontal: false, vertical: true)
+
+        HStack(spacing: 10) {
+            Text("Window transparency")
+            Slider(value: $state.windowOpacity, in: 0.3...1)
+            Text("\(Int((state.windowOpacity * 100).rounded())) %")
+                .monospacedDigit()
+                .frame(width: 52, alignment: .trailing)
+        }
         }
     }
 

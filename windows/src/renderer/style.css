@@ -32,3 +32,4 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0; }
 dl.about dt { color: var(--muted); } dl.about dd { margin: 0; }
+.opacity input[type=range] { flex: 1; } .opacity span { width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }

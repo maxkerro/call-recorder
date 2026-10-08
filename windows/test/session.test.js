@@ -260,3 +260,14 @@ test('an audio file from elsewhere gets prefixed names next to it', () => {
   assert.strictEqual(path.basename(P.summary), 'meeting.summary.md');
   assert.strictEqual(path.basename(layout.namesForAudio(path.join('x', 'audio.mp3')).fixed), 'fixed_transcript.txt');
 });
+
+test('window transparency is clamped to 30-100 %, saved, and applied through the hook', () => {
+  const { s } = makeSession();
+  const seen = [];
+  s.hooks.setOpacity = (v) => seen.push(v);
+  s.setSetting('windowOpacity', 0.1);
+  s.setSetting('windowOpacity', 0.65);
+  s.setSetting('windowOpacity', 7);
+  assert.deepStrictEqual(seen, [0.3, 0.65, 1]);
+  assert.strictEqual(config.loadSettings().windowOpacity, 1);
+});

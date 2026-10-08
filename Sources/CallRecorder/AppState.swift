@@ -33,6 +33,16 @@ final class AppState: ObservableObject {
     @Published var summaryText = ""
     @Published var summaryNote = ""
     var summaryTranscript = ""
+    /// 0.3 … 1.0; applied to every window of the app (the main window and the menu-bar popover).
+    @Published var windowOpacity: Double {
+        didSet {
+            UserDefaults.standard.set(windowOpacity, forKey: "opacity")
+            applyOpacity()
+        }
+    }
+    func applyOpacity() {
+        for w in NSApp.windows { w.alphaValue = CGFloat(windowOpacity) }
+    }
     @Published var glossaryCorrect: Bool {
         didSet { UserDefaults.standard.set(glossaryCorrect, forKey: "glossary") }
     }
@@ -151,6 +161,8 @@ final class AppState: ObservableObject {
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
         glossaryCorrect = UserDefaults.standard.object(forKey: "glossary") as? Bool ?? true
+        let savedOpacity = UserDefaults.standard.object(forKey: "opacity") as? Double ?? 1
+        windowOpacity = min(1, max(0.3, savedOpacity))
         offlineMode = UserDefaults.standard.bool(forKey: "offline")
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e

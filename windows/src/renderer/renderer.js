@@ -24,6 +24,10 @@ function render(s) {
   setText($('folderPath'), s.settings.outputRoot || s.rootDir);
   $('btnChoose').disabled = s.isRecording; $('btnReset').disabled = s.isRecording || !s.settings.outputRoot;
 
+  const op = Math.round((s.settings.windowOpacity || 1) * 100);
+  if (document.activeElement !== $('opacity')) $('opacity').value = op;
+  setText($('opacityValue'), `${$('opacity').value}%`);
+
   const lang = $('language');
   if (!lang.options.length) {
     for (const l of s.languages) lang.add(new Option(l.name, l.id));
@@ -93,6 +97,7 @@ $('btnShot').onclick = () => window.api.screenshot();
 $('topic').oninput = (e) => window.api.setTopic(e.target.value);
 $('btnChoose').onclick = () => window.api.chooseFolder();
 $('btnReset').onclick = () => window.api.resetFolder();
+$('opacity').oninput = (e) => { setText($('opacityValue'), `${e.target.value}%`); window.api.setSetting('windowOpacity', e.target.value / 100); };
 $('btnFile').onclick = () => window.api.transcribeFile();
 $('btnFolder').onclick = () => window.api.openFolder();
 $('btnVocab').onclick = () => window.api.openVocabulary();

@@ -92,6 +92,14 @@ class Session {
       this.set({ status: dir ? `Recordings will be saved in ${dir}` : 'Recordings go to the default folder again' });
       return;
     }
+    if (key === 'windowOpacity') {
+      const v = Math.min(1, Math.max(0.3, Number(value) || 1));
+      this.settings.windowOpacity = v;
+      config.saveSettings(this.settings);
+      if (this.hooks.setOpacity) this.hooks.setOpacity(v);
+      this.hooks.changed(this.snapshot());
+      return;
+    }
     if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode', 'glossaryCorrect'].includes(key)) return;
     if (key === 'language' && !config.languages.some((l) => l.id === value)) return;
     this.settings[key] = value;
