@@ -115,7 +115,7 @@ struct MenuView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .lineLimit(2).truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Choose…") { state.chooseFolder() }.fixedSize()
+                Button("Choose") { state.chooseFolder() }.fixedSize()
                 Button("Default") { state.setOutputRoot("") }.fixedSize()
                     .disabled(state.outputRoot.isEmpty)
             }
@@ -137,7 +137,7 @@ struct MenuView: View {
             Toggle("Recognize speakers (Speaker 1, 2…)", isOn: $state.identifySpeakers)
                 .disabled(state.isRecording)
 
-            Toggle("Fix glossary terms in transcript (Vocabulary…, local Ollama)", isOn: $state.glossaryCorrect)
+            Toggle("Fix glossary terms in transcript (Vocabulary list, local Ollama)", isOn: $state.glossaryCorrect)
                 .disabled(state.isRecording)
 
             Toggle("Summarize each call (local Ollama)", isOn: $state.summarizeCalls)
@@ -147,7 +147,7 @@ struct MenuView: View {
                 .disabled(state.isRecording)
 
             if !state.speakerLabels.isEmpty && !state.isRecording {
-                Menu("Rename speaker…") {
+                Menu("Rename speaker") {
                     ForEach(state.speakerLabels, id: \.self) { name in
                         Button(name) { state.promptRename(name) }
                     }
@@ -213,13 +213,14 @@ struct MenuView: View {
 
             // Two rows and buttons that never shrink, so no label is cut off.
             HStack(spacing: 8) {
-                Button("Transcribe file…") { state.transcribeFileDialog() }
+                Button("Transcribe file") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
-                Button("Vocabulary…") { state.openVocabulary() }
+                Button("Vocabulary") { state.openVocabulary() }
                 Spacer()
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
             .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
