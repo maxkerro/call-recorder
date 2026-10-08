@@ -186,6 +186,8 @@ struct MenuView: View {
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
+            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
 
             Text(state.status)
                 .font(.caption)
@@ -200,6 +202,6 @@ struct MenuView: View {
             }
         }
         .padding(14)
-        .frame(width: 340)
+        .frame(width: 480)
     }
 }
