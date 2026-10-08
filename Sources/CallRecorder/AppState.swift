@@ -29,6 +29,11 @@ final class AppState: ObservableObject {
     @Published var verifyAfterLive: Bool {
         didSet { UserDefaults.standard.set(verifyAfterLive, forKey: "verify") }
     }
+    @Published var speakerLabels: [String] = []
+    var lastTranscriptURL: URL?
+    @Published var identifySpeakers: Bool {
+        didSet { UserDefaults.standard.set(identifySpeakers, forKey: "speakers") }
+    }
     @Published var engine: Engine {
         didSet { UserDefaults.standard.set(engine.rawValue, forKey: "engine") }
     }
@@ -58,6 +63,7 @@ final class AppState: ObservableObject {
     init() {
         localeID = UserDefaults.standard.string(forKey: "localeID") ?? "en-US"
         verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
+        identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e
         } else {
@@ -286,9 +292,24 @@ final class AppState: ObservableObject {
                 let modelName = URL(fileURLWithPath: WhisperEngine.modelPath() ?? "").deletingPathExtension().lastPathComponent
                 status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
                 let lang = WhisperEngine.languageCode(from: localeID)
-                text = try await Task.detached(priority: .userInitiated) {
-                    try WhisperEngine.transcribeFile(url, language: lang)
-                }.value
+                var turns: [SpeakerTurn] = []
+                if identifySpeakers {
+                    status = "Finding who speaks when… (the first time this downloads small speaker models)"
+                    do { turns = try await Diarizer.shared.diarize(url) }
+                    catch { checkNote = "Speaker recognition failed: \(error.localizedDescription)" }
+                    status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
+                }
+                if turns.isEmpty {
+                    text = try await Task.detached(priority: .userInitiated) {
+                        try WhisperEngine.transcribeFile(url, language: lang)
+                    }.value
+                } else {
+                    let turns = turns
+                    text = try await Task.detached(priority: .userInitiated) {
+                        try WhisperEngine.transcribeFileWithSpeakers(url, language: lang, turns: turns)
+                            .joined(separator: "\n")
+                    }.value
+                }
             case .apple:
                 guard await Transcription.requestAuthorization() else {
                     status = "Speech recognition not allowed (System Settings → Privacy & Security)"
@@ -303,12 +324,54 @@ final class AppState: ObservableObject {
             }
             let out = url.deletingPathExtension().appendingPathExtension("txt")
             try text.write(to: out, atomically: true, encoding: .utf8)
-            finalLines = text.components(separatedBy: "\n\n")
+            finalLines = text.contains("\n\n") ? text.components(separatedBy: "\n\n") : text.components(separatedBy: "\n")
+            lastTranscriptURL = out
+            refreshSpeakers()
             status = "Saved \(out.lastPathComponent)"
             NSWorkspace.shared.activateFileViewerSelecting([out])
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: Speaker names
+
+    /// Labels such as "Speaker 1" present in the current transcript (offered in the Rename menu).
+    private func refreshSpeakers() {
+        var seen: [String] = []
+        // Lines look like "[mm:ss] Label: text".
+        for l in finalLines {
+            guard let close = l.firstIndex(of: "]") else { continue }
+            let rest = l[l.index(after: close)...].drop(while: { $0 == " " })
+            guard let colon = rest.firstIndex(of: ":") else { continue }
+            let label = String(rest[rest.startIndex..<colon])
+            if label.hasPrefix("Speaker"), !seen.contains(label) { seen.append(label) }
+        }
+        speakerLabels = seen
+    }
+
+    /// Renames a speaker in the shown transcript and in the saved .txt file.
+    func renameSpeaker(_ old: String, to new: String) {
+        let name = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != old else { return }
+        finalLines = finalLines.map { $0.replacingOccurrences(of: "] \(old): ", with: "] \(name): ") }
+        if let url = lastTranscriptURL {
+            try? finalLines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+        refreshSpeakers()
+        status = "Renamed \(old) to \(name)"
+    }
+
+    func promptRename(_ old: String) {
+        let alert = NSAlert()
+        alert.messageText = "Rename \(old)"
+        alert.informativeText = "Type the person's name:"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { renameSpeaker(old, to: field.stringValue) }
     }
 
     // MARK: Check pass
@@ -335,9 +398,18 @@ final class AppState: ObservableObject {
         }
         checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
         let lang = WhisperEngine.languageCode(from: localeID)
+        var turns: [SpeakerTurn] = []
+        var diarizeNote = ""
+        if identifySpeakers, let system {
+            checkNote = "Finding who speaks when… (the first time this downloads small speaker models)"
+            do { turns = try await Diarizer.shared.diarize(system) }
+            catch { diarizeNote = " Speaker recognition failed (\(error.localizedDescription)); labels are Me/Them." }
+        }
+        checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
         do {
+            let turns = turns
             let lines = try await Task.detached(priority: .utility) {
-                try WhisperEngine.transcribeTracks(system: system, mic: mic, language: lang)
+                try WhisperEngine.transcribeTracks(system: system, mic: mic, language: lang, turns: turns)
             }.value
             guard !lines.isEmpty else {
                 checkNote = "Transcript check heard no speech; the live transcript was kept."
@@ -347,10 +419,14 @@ final class AppState: ObservableObject {
                                                   atomically: true, encoding: .utf8)
             try lines.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".txt"),
                                                    atomically: true, encoding: .utf8)
-            if !isRecording { finalLines = lines }
+            if !isRecording {
+                finalLines = lines
+                lastTranscriptURL = outDir.appendingPathComponent(base + ".txt")
+                refreshSpeakers()
+            }
             let before = Self.wordCount(live), after = Self.wordCount(lines)
             checkNote = "Checked: \(base).txt now has the verified transcript (\(before) → \(after) words). "
-                      + "The live version is saved as \(base).live.txt."
+                      + "The live version is saved as \(base).live.txt." + diarizeNote
         } catch {
             checkNote = "Transcript check failed: \(error.localizedDescription). The live transcript was kept."
         }

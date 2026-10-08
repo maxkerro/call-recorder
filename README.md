@@ -67,6 +67,13 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
   track separately with the accurate model, which fills in words the live view missed, and replaces the transcript
   (`<name>.txt`, labelled "Them"/"Me"). The live version stays as `<name>.live.txt`. It runs in the background and
   takes a few minutes for long calls; switch it off with the checkbox in the menu.
+- **Speakers:** with "Recognize speakers" on, the call-audio track is analysed locally (FluidAudio) and its lines are
+  labelled "Speaker 1", "Speaker 2"… instead of "Them"; your microphone stays "Me". For "Transcribe file…" every voice,
+  including yours, gets a Speaker label. Use **Rename speaker…** to replace a label with a name; the saved `.txt`
+  is updated. Speaker models (small, a few hundred MB at most) download on first use. Voices are matched only
+  within one recording; no voice profiles are stored. Limits: it works per transcript segment, so a quick
+  interjection inside a long segment may be attributed to the main speaker, and several people sharing your
+  microphone in one room all show as "Me" (use "Transcribe file…" on the MP3 to split them).
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

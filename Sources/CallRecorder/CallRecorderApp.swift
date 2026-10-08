@@ -108,6 +108,17 @@ struct MenuView: View {
             Toggle("Check transcript after live recording", isOn: $state.verifyAfterLive)
                 .disabled(state.isRecording)
 
+            Toggle("Recognize speakers (Speaker 1, 2…)", isOn: $state.identifySpeakers)
+                .disabled(state.isRecording)
+
+            if !state.speakerLabels.isEmpty && !state.isRecording {
+                Menu("Rename speaker…") {
+                    ForEach(state.speakerLabels, id: \.self) { name in
+                        Button(name) { state.promptRename(name) }
+                    }
+                }
+            }
+
             if let hint = state.whisperHint {
                 Text(hint)
                     .font(.caption)

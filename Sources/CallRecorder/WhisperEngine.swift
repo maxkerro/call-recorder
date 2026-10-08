@@ -7,6 +7,7 @@ enum WhisperEngine {
     struct Segment {
         var start: Double   // seconds from the start of the audio that was transcribed
         var text: String
+        var end: Double = 0
     }
 
     enum WhisperError: LocalizedError {
@@ -251,7 +252,7 @@ enum WhisperEngine {
     /// Lines look like: [00:00:03.000 --> 00:00:07.500]   Hello there
     static func parse(_ output: String) -> [Segment] {
         guard let re = try? NSRegularExpression(
-            pattern: #"^\[(\d+):(\d+):(\d+)[.,](\d+)\s*-->\s*[^\]]*\]\s*(.*)$"#) else { return [] }
+            pattern: #"^\[(\d+):(\d+):(\d+)[.,](\d+)\s*-->\s*(\d+):(\d+):(\d+)[.,](\d+)\s*\]\s*(.*)$"#) else { return [] }
         var segs: [Segment] = []
         let seq = vocabularySequence()
         let blocked = userBlocklist()
@@ -261,10 +262,14 @@ enum WhisperEngine {
             let h = Double(ns.substring(with: m.range(at: 1))) ?? 0
             let mi = Double(ns.substring(with: m.range(at: 2))) ?? 0
             let s = Double(ns.substring(with: m.range(at: 3))) ?? 0
-            let raw = ns.substring(with: m.range(at: 5)).trimmingCharacters(in: .whitespaces)
+            let eh = Double(ns.substring(with: m.range(at: 5))) ?? 0
+            let em = Double(ns.substring(with: m.range(at: 6))) ?? 0
+            let es = Double(ns.substring(with: m.range(at: 7))) ?? 0
+            let raw = ns.substring(with: m.range(at: 9)).trimmingCharacters(in: .whitespaces)
             let text = stripPromptEcho(scrub(raw, blocklist: blocked), seq: seq)
             if isNoise(text) { continue }
-            segs.append(Segment(start: h * 3600 + mi * 60 + s, text: text))
+            let start = h * 3600 + mi * 60 + s
+            segs.append(Segment(start: start, text: text, end: max(start, eh * 3600 + em * 60 + es)))
         }
         return segs
     }
@@ -328,13 +333,40 @@ enum WhisperEngine {
 
     /// The accurate "check" pass: transcribes the call-audio track ("Them") and the microphone track ("Me")
     /// separately, so overlapping speech doesn't confuse Whisper, and returns speaker-labelled lines.
-    static func transcribeTracks(system: URL?, mic: URL?, language: String) throws -> [String] {
+    static func transcribeTracks(system: URL?, mic: URL?, language: String,
+                                 turns: [SpeakerTurn] = []) throws -> [String] {
         var all: [(t: Double, label: String, text: String)] = []
         for (url, label) in [(system, "Them"), (mic, "Me")] {
             guard let url, !isSilent(url) else { continue }
-            for seg in try segments(of: url, language: language) { all.append((seg.start, label, seg.text)) }
+            for seg in try segments(of: url, language: language) {
+                let who = (label == "Them" && !turns.isEmpty) ? (speaker(for: seg, in: turns) ?? label) : label
+                all.append((seg.start, who, seg.text))
+            }
         }
-        all.sort { $0.t < $1.t }
+        return lines(from: all)
+    }
+
+    /// Whole file with speaker labels: diarization of the (mixed) file decides who says each segment.
+    static func transcribeFileWithSpeakers(_ input: URL, language: String, turns: [SpeakerTurn]) throws -> [String] {
+        let all = try segments(of: input, language: language).map {
+            (t: $0.start, label: speaker(for: $0, in: turns) ?? "Speaker ?", text: $0.text)
+        }
+        return lines(from: all)
+    }
+
+    /// The speaker whose turns overlap the segment the most (nil when nobody was detected there).
+    static func speaker(for seg: Segment, in turns: [SpeakerTurn]) -> String? {
+        let end = max(seg.end, seg.start + 0.5)
+        var overlap: [String: Double] = [:]
+        for t in turns {
+            let o = min(end, t.end) - max(seg.start, t.start)
+            if o > 0 { overlap[t.speaker, default: 0] += o }
+        }
+        return overlap.max { $0.value < $1.value }?.key
+    }
+
+    static func lines(from entries: [(t: Double, label: String, text: String)]) -> [String] {
+        let all = entries.sorted { $0.t < $1.t }
 
         // Join consecutive segments of the same speaker into one line.
         var lines: [(t: Double, label: String, text: String, last: Double)] = []
