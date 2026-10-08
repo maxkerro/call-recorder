@@ -12,7 +12,7 @@ enum CaptureError: LocalizedError {
     }
 }
 
-/// Captures system audio (Teams, Telemost, Skype, browsers, anything you hear)
+/// Captures system audio (Teams, Skype, browsers, anything you hear)
 /// and the microphone through ScreenCaptureKit (macOS 15+), writing each
 /// source to its own temporary CAF file. They are mixed into one MP3 afterwards.
 final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {

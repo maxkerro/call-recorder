@@ -1,7 +1,7 @@
 # CallRecorder for Windows
 
 Same app as the Mac version, built with Electron so it runs on Windows 10/11 (64-bit). It records everything you hear
-(Teams, Telemost, Skype, Zoom, a browser…) plus your microphone, and does everything locally:
+(Teams, Skype, Zoom, a browser…) plus your microphone, and does everything locally:
 
 | Step | How |
 |------|-----|

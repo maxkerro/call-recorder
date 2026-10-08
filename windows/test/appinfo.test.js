@@ -12,5 +12,7 @@ test('About box facts are complete and the Mac and Windows versions agree', () =
   const root = path.join(__dirname, '..', '..');
   assert.match(fs.readFileSync(path.join(root, 'Info.plist'), 'utf8'), new RegExp(`ShortVersionString</key><string>${info.version}</string>`));
   assert.match(fs.readFileSync(path.join(root, 'Sources', 'CallRecorder', 'AppInfo.swift'), 'utf8'), new RegExp(`version = "${info.version}"`));
+  assert.match(fs.readFileSync(path.join(root, 'Info.plist'), 'utf8'), new RegExp(`CFBundleVersion</key><string>${info.build}</string>`));
+  assert.match(fs.readFileSync(path.join(root, 'Sources', 'CallRecorder', 'AppInfo.swift'), 'utf8'), new RegExp(`build = "${info.build}"`));
   assert.match(fs.readFileSync(path.join(root, 'Sources', 'CallRecorder', 'AppInfo.swift'), 'utf8'), new RegExp(`releaseDate = "${info.releaseDate}"`));
 });

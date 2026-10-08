@@ -28,7 +28,7 @@ function ensureVocabularyFile() {
       '# Lines starting with # are ignored. Keep it short (a few dozen terms) for best results.',
       '# A line starting with ! is a phrase that must never appear in a transcript, for example:',
       '# ! Subtitles by the Amara.org community',
-      'Mercedes-Benz', 'Luxoft', 'infotainment', 'HMI', 'SAFe', 'Scrum', 'Telemost', '',
+      'Mercedes-Benz', 'Luxoft', 'infotainment', 'HMI', 'SAFe', 'Scrum', '',
     ].join('\r\n'));
   }
   return vocabularyFile;

@@ -3,11 +3,12 @@ import AppKit
 /// Facts shown in the About box. Keep `version` in step with Info.plist and windows/package.json.
 enum AppInfo {
     static let name = "CallRecorder"
-    static let version = "1.1.0"
+    static let version = "1.18.23"
+    static let build = "42"                       // number of commits at release
     static let releaseDate = "8 October 2026"
     static let author = "Maksim Masliukov"
     static let summary = """
-    Records any call you hear (Teams, Telemost, Skype, a browser…) plus your microphone, transcribes it \
+    Records any call you hear (Teams, Skype, a browser…) plus your microphone, transcribes it \
     locally with Whisper, labels the speakers, and writes a summary with a local Ollama model. \
     Nothing leaves your computer.
     """
@@ -18,7 +19,7 @@ enum AppInfo {
         alert.informativeText = """
         \(summary)
 
-        Version: \(version)
+        Version: \(version) (build \(build))
         Released: \(releaseDate)
         Author: \(author)
         """

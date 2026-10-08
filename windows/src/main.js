@@ -151,7 +151,7 @@ app.on('web-contents-created', (_e, wc) => {
 
 app.whenReady().then(() => {
   const ses = electronSession.defaultSession;
-  // System audio: "loopback" captures everything you hear (Teams, Telemost, browser…), like the Mac version.
+  // System audio: "loopback" captures everything you hear (Teams, Zoom, browser…), like the Mac version.
   ses.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       callback({ video: sources[0], audio: 'loopback' });
@@ -211,7 +211,7 @@ app.whenReady().then(() => {
   });
   handle('about', () => dialog.showMessageBox(win, {
     type: 'info', title: `About ${appinfo.name}`, message: `${appinfo.name} ${appinfo.version}`, buttons: ['OK'], noLink: true,
-    detail: `${appinfo.summary}\n\nVersion: ${appinfo.version}\nReleased: ${appinfo.releaseDate}\nAuthor: ${appinfo.author}`,
+    detail: `${appinfo.summary}\n\nVersion: ${appinfo.version} (build ${appinfo.build})\nReleased: ${appinfo.releaseDate}\nAuthor: ${appinfo.author}`,
   }));
   handle('quit', () => { quitting = true; app.quit(); });
 

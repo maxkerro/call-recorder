@@ -2,7 +2,7 @@
 
 > **Windows?** See [`windows/README.md`](windows/README.md): the same app for Windows 10/11.
 
-A menu-bar app that records any call you hear (Teams, Telemost, Skype, Zoom, a browser...)
+A menu-bar app that records any call you hear (Teams, Skype, Zoom, a browser...)
 plus your microphone, and saves one MP3. It also transcribes, using Apple's native Speech framework.
 
 ## Build

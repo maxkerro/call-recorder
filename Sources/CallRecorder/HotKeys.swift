@@ -1,7 +1,7 @@
 import Foundation
 import Carbon.HIToolbox
 
-/// System-wide keyboard shortcuts (work while Teams/Telemost/etc. are in front).
+/// System-wide keyboard shortcuts (work while Teams/Zoom/etc. are in front).
 /// Carbon hot keys need no Accessibility permission.
 final class HotKeys {
     static let shared = HotKeys()

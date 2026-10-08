@@ -185,7 +185,6 @@ enum WhisperEngine {
             HMI
             SAFe
             Scrum
-            Telemost
             """
             try? template.write(to: url, atomically: true, encoding: .utf8)
         }

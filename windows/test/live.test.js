@@ -62,9 +62,9 @@ test('hallucinated or looping segments are ignored', async () => {
 
 test('the vocabulary hint read back after a breath is dropped', async () => {
   const t = new StreamingTranscriber({
-    label: 'Me', language: 'en', vocabSeq: ['hmi', 'safe', 'scrum', 'telemost'],
+    label: 'Me', language: 'en', vocabSeq: ['hmi', 'safe', 'scrum', 'jira'],
     transcribe: async () => ({ segs: [seg([word('ok', 0, 0.3), word('HMI', 0.4, 0.6), word('SAFe', 0.6, 0.8),
-      word('Scrum', 0.8, 1.0), word('Telemost', 1.0, 1.3)])], probs: {}, language: 'en' }),
+      word('Scrum', 0.8, 1.0), word('Jira', 1.0, 1.3)])], probs: {}, language: 'en' }),
   });
   const events = []; t.onEvent = (e) => events.push(e);
   t.append(tone(1.5)); t.append(quiet(1.5));

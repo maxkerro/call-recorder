@@ -18,11 +18,11 @@ test('scrub leaves normal text alone and honours the ! blocklist', () => {
 });
 
 test('echo filter drops the vocabulary tail after a breath', () => {
-  const seq = ['mercedesbenz', 'luxoft', 'infotainment', 'hmi', 'safe', 'scrum', 'telemost'];
-  const words = 'We agreed HMI, SAFe, Scrum, Telemost'.split(' ');
+  const seq = ['mercedesbenz', 'luxoft', 'infotainment', 'hmi', 'safe', 'scrum', 'jira'];
+  const words = 'We agreed HMI, SAFe, Scrum, Jira'.split(' ');
   const drop = text.echoIndices(words.map(text.norm), seq);
   assert.deepStrictEqual([...drop], [2, 3, 4, 5]);
-  assert.strictEqual(text.stripPromptEcho('We agreed HMI, SAFe, Scrum, Telemost', seq), 'We agreed');
+  assert.strictEqual(text.stripPromptEcho('We agreed HMI, SAFe, Scrum, Jira', seq), 'We agreed');
   // a legitimate single use of one term stays
   assert.strictEqual(text.stripPromptEcho('We use Scrum here', seq), 'We use Scrum here');
 });
