@@ -29,6 +29,12 @@ final class AppState: ObservableObject {
     @Published var verifyAfterLive: Bool {
         didSet { UserDefaults.standard.set(verifyAfterLive, forKey: "verify") }
     }
+    @Published var summaryText = ""
+    @Published var summaryNote = ""
+    var summaryTranscript = ""
+    @Published var summarizeCalls: Bool {
+        didSet { UserDefaults.standard.set(summarizeCalls, forKey: "summarize") }
+    }
     @Published var speakerLabels: [String] = []
     var lastTranscriptURL: URL?
     @Published var identifySpeakers: Bool {
@@ -64,6 +70,7 @@ final class AppState: ObservableObject {
         localeID = UserDefaults.standard.string(forKey: "localeID") ?? "en-US"
         verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
+        summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e
         } else {
@@ -235,7 +242,19 @@ final class AppState: ObservableObject {
                 let mic = session.hasMicAudio ? session.micURL : nil
                 let base = baseName
                 let delete = lastFile != nil
-                Task { await self.verify(base: base, system: system, mic: mic, live: live, deleteTracks: delete) }
+                Task {
+                    let verified = await self.verify(base: base, system: system, mic: mic, live: live, deleteTracks: delete)
+                    await self.summarize(lines: verified, base: base)
+                }
+            } else {
+                let live = finalLines, base = baseName
+                Task { await self.summarize(lines: live, base: base) }
+            }
+        } else if summarizeCalls, let mp3 = lastFile {
+            // Plain recording: transcribe it now (the summary follows), so every call gets one.
+            Task {
+                try? await Task.sleep(nanoseconds: 700_000_000)    // let `busy` clear first
+                await self.transcribe(mp3)
             }
         }
     }
@@ -328,7 +347,9 @@ final class AppState: ObservableObject {
             lastTranscriptURL = out
             refreshSpeakers()
             status = "Saved \(out.lastPathComponent)"
-            NSWorkspace.shared.activateFileViewerSelecting([out])
+            let done = finalLines, name = url.deletingPathExtension().lastPathComponent
+            Task { await self.summarize(lines: done, base: name) }
+            if !summarizeCalls { NSWorkspace.shared.activateFileViewerSelecting([out]) }
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
         }
@@ -385,7 +406,8 @@ final class AppState: ObservableObject {
 
     /// After a live recording: re-transcribe both tracks with the accurate model and replace the transcript.
     /// The live version is kept next to it as ".live.txt".
-    private func verify(base: String, system: URL?, mic: URL?, live: [String], deleteTracks: Bool) async {
+    @discardableResult
+    private func verify(base: String, system: URL?, mic: URL?, live: [String], deleteTracks: Bool) async -> [String] {
         defer {
             if deleteTracks {
                 if let system { try? FileManager.default.removeItem(at: system) }
@@ -394,7 +416,7 @@ final class AppState: ObservableObject {
         }
         guard WhisperEngine.isReady else {
             checkNote = "Transcript check skipped: Whisper isn't set up (run ./setup-whisper.sh)."
-            return
+            return live
         }
         checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
         let lang = WhisperEngine.languageCode(from: localeID)
@@ -413,7 +435,7 @@ final class AppState: ObservableObject {
             }.value
             guard !lines.isEmpty else {
                 checkNote = "Transcript check heard no speech; the live transcript was kept."
-                return
+                return live
             }
             try live.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".live.txt"),
                                                   atomically: true, encoding: .utf8)
@@ -427,9 +449,41 @@ final class AppState: ObservableObject {
             let before = Self.wordCount(live), after = Self.wordCount(lines)
             checkNote = "Checked: \(base).txt now has the verified transcript (\(before) → \(after) words). "
                       + "The live version is saved as \(base).live.txt." + diarizeNote
+            return lines
         } catch {
             checkNote = "Transcript check failed: \(error.localizedDescription). The live transcript was kept."
+            return live
         }
+    }
+
+    // MARK: Summary
+
+    /// Summarizes a finished transcript with the local Ollama model and saves `<base>.summary.md`.
+    func summarize(lines: [String], base: String) async {
+        guard summarizeCalls else { return }
+        let transcript = lines.joined(separator: "\n")
+        guard transcript.split(whereSeparator: \.isWhitespace).count >= 15 else { return }
+        summaryText = ""
+        summaryNote = "Summarizing the call with a local model…"
+        do {
+            let text = try await Summarizer.summarize(transcript: transcript)
+            let url = outDir.appendingPathComponent(base + ".summary.md")
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            summaryText = text
+            summaryTranscript = transcript
+            summaryNote = "Summary saved as \(url.lastPathComponent)."
+        } catch {
+            summaryTranscript = transcript
+            summaryNote = "No summary: \(error.localizedDescription) You can still use “Copy for Claude”."
+        }
+    }
+
+    /// Puts the summary prompt + transcript on the clipboard, to paste into claude.ai.
+    func copyForClaude() {
+        guard !summaryTranscript.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Summarizer.pasteText(summaryTranscript), forType: .string)
+        summaryNote = "Copied. Paste it into a Claude chat to get the summary."
     }
 
     func openFolder() { NSWorkspace.shared.open(outDir) }

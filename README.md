@@ -74,6 +74,12 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
   within one recording; no voice profiles are stored. Limits: it works per transcript segment, so a quick
   interjection inside a long segment may be attributed to the main speaker, and several people sharing your
   microphone in one room all show as "Me" (use "Transcribe file…" on the MP3 to split them).
+- **Summary:** when a call has been transcribed (a plain "Record to MP3" is transcribed automatically afterwards),
+  the app writes `<name>.summary.md` (summary, key points, decisions, action items, open questions) using a local
+  model served by [Ollama](https://ollama.com), so nothing leaves your Mac. One-time setup:
+  `brew install ollama && brew services start ollama && ollama pull qwen2.5:7b` (`qwen2.5:14b` is better if you have
+  16 GB+ RAM). Without Ollama, **Copy for Claude** puts the instructions + transcript on the clipboard to paste into a
+  Claude chat. Turn it off with the "Summarize each call" checkbox.
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

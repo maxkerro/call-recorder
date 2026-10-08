@@ -111,6 +111,9 @@ struct MenuView: View {
             Toggle("Recognize speakers (Speaker 1, 2…)", isOn: $state.identifySpeakers)
                 .disabled(state.isRecording)
 
+            Toggle("Summarize each call (local Ollama)", isOn: $state.summarizeCalls)
+                .disabled(state.isRecording)
+
             if !state.speakerLabels.isEmpty && !state.isRecording {
                 Menu("Rename speaker…") {
                     ForEach(state.speakerLabels, id: \.self) { name in
@@ -145,6 +148,31 @@ struct MenuView: View {
                     .frame(height: 260)
                     .onChange(of: state.finalLines) { _, _ in proxy.scrollTo("end") }
                     .onChange(of: state.partials) { _, _ in proxy.scrollTo("end") }
+                }
+            }
+
+            if !state.summaryText.isEmpty || !state.summaryNote.isEmpty {
+                Divider()
+                Text("Summary").font(.subheadline.bold())
+                if !state.summaryText.isEmpty {
+                    ScrollView {
+                        Text(state.summaryText)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 220)
+                }
+                Text(state.summaryNote).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    if !state.summaryText.isEmpty {
+                        Button("Copy summary") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(state.summaryText, forType: .string)
+                        }
+                    }
+                    Button("Copy for Claude") { state.copyForClaude() }
                 }
             }
 
