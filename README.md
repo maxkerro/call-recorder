@@ -54,7 +54,8 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
 - **Accuracy:** "Transcribe file…" uses the most accurate model (large-v3) with beam search, volume levelling
   and silence detection; the live transcript uses the faster large-v3-turbo so it keeps up in real time. For
   best results: choose the language of the call instead of Auto-detect (auto-detect on a one-second window is
-  unreliable, especially for mixed calls), use the **Vocabulary…** button to list names and jargon Whisper
+  unreliable, especially for mixed calls; the live "Auto-detect" now picks between English, German and Russian once
+  per sentence instead of guessing every second), use the **Vocabulary…** button to list names and jargon Whisper
   should spell correctly (one per line), and use headphones so the other side doesn't leak into your mic.
   The most accurate result is always the file transcription, so for important calls record, then transcribe
   the MP3 afterwards.

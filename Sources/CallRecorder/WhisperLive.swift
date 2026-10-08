@@ -74,12 +74,22 @@ actor WhisperServer {
     static let shared = WhisperServer()
 
     struct Word { var text: String; var start: Double; var end: Double }
-    struct Seg { var start: Double; var end: Double; var text: String; var noSpeech: Double; var words: [Word] }
+    struct Seg {
+        var start: Double; var end: Double; var text: String
+        var noSpeech: Double; var avgLogprob: Double; var words: [Word]
+    }
+    struct Result {
+        var segs: [Seg]
+        var probs: [String: Double]     // language code -> probability (only when the language was auto-detected)
+        var language: String            // language Whisper used/detected, as a code ("en", "ru", …)
+    }
+    private static let languageCodes = ["english": "en", "german": "de", "russian": "ru"]
 
     private var process: Process?
     private var port = 0
     private var startTask: Task<Void, Error>?
     private var prompt = ""
+    private var vadOn = false
     private let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("whisper-server.log")
 
     func ensureRunning() async throws {
@@ -107,7 +117,12 @@ actor WhisperServer {
         let log = try FileHandle(forWritingTo: logURL)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-l", "auto", "-t", "4"]
+        var args = ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-l", "auto", "-t", "4"]
+        if let vad = WhisperEngine.vadModelPath() {
+            args += ["--vad", "-vm", vad]
+            vadOn = true
+        }
+        p.arguments = args
         p.standardOutput = log
         p.standardError = log
         try p.run()
@@ -132,7 +147,7 @@ actor WhisperServer {
         return (resp as? HTTPURLResponse)?.statusCode == 200
     }
 
-    func transcribe(samples: [Float], language: String) async throws -> [Seg] {
+    func transcribe(samples: [Float], language: String) async throws -> Result {
         try await ensureRunning()
 
         let boundary = "----CallRecorder\(UUID().uuidString)"
@@ -143,9 +158,10 @@ actor WhisperServer {
         field("response_format", "verbose_json")
         field("language", language)
         field("temperature", "0.0")
-        field("temperature_inc", "0.0")
+        field("temperature_inc", "0.2")          // retry hotter when decoding degenerates (repetition loops)
         field("suppress_nst", "true")
-        field("no_language_probabilities", "true")
+        if vadOn { field("vad", "true") }        // only decode where there is speech
+        if language != "auto" { field("no_language_probabilities", "true") }
         if !prompt.isEmpty {
             field("prompt", prompt)
             field("carry_initial_prompt", "true")
@@ -168,24 +184,38 @@ actor WhisperServer {
 
     // MARK: JSON
 
-    static func parse(_ data: Data) -> [Seg] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let segments = root["segments"] as? [[String: Any]] else { return [] }
+    static func parse(_ data: Data) -> Result {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return Result(segs: [], probs: [:], language: "")
+        }
+        var probs: [String: Double] = [:]
+        if let lp = root["language_probabilities"] as? [String: Any] {
+            for (k, v) in lp {
+                if let d = v as? Double { probs[languageCodes[k.lowercased()] ?? k.lowercased()] = d }
+            }
+        }
+        var code = probs.max(by: { $0.value < $1.value })?.key ?? ""
+        if code.isEmpty, let name = (root["language"] as? String)?.lowercased() {
+            code = languageCodes[name] ?? name
+        }
+
         var out: [Seg] = []
-        for s in segments {
+        for s in (root["segments"] as? [[String: Any]]) ?? [] {
             let text = (s["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let start = (s["start"] as? Double) ?? 0
             let end = (s["end"] as? Double) ?? start
             let noSpeech = (s["no_speech_prob"] as? Double) ?? 0
+            let avgLogprob = (s["avg_logprob"] as? Double) ?? 0
             let tokens = (s["words"] as? [[String: Any]]) ?? []
             var words = mergeTokens(tokens)
             // Fall back to even spacing inside the segment when word timestamps are missing/unusable.
             if words.isEmpty || words.contains(where: { $0.start < 0 || $0.end < $0.start }) {
                 words = interpolate(text: text, start: start, end: end)
             }
-            out.append(Seg(start: start, end: end, text: text, noSpeech: noSpeech, words: words))
+            out.append(Seg(start: start, end: end, text: text, noSpeech: noSpeech,
+                           avgLogprob: avgLogprob, words: words))
         }
-        return out
+        return Result(segs: out, probs: probs, language: code)
     }
 
     /// The server reports sub-word tokens; a token that begins with a space starts a new word.
@@ -245,6 +275,9 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
     private var prevTail: [HWord] = []
     private var lastSentCount = -1
     private var reportedError = false
+    private let allowedLanguages = ["en", "de", "ru"]     // what "Auto-detect" chooses between
+    private var lockedLanguage: String?                   // language fixed for the current utterance
+    private var lastLanguage: String?
 
     private let sr = 16000.0
     private let silenceRMS: Float = 0.003
@@ -309,6 +342,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
             if final, hadTail { emit(commit: prevTail, tail: []) }
             else if hadTail { onEvent?(LiveEvent(label: label)) }
             prevTail = []
+            lockedLanguage = nil
             trim(toAbsoluteSample: max(start, endAbs - Int(0.5 * sr)))
             return
         }
@@ -321,7 +355,18 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
 
         let segs: [WhisperServer.Seg]
         do {
-            segs = try await WhisperServer.shared.transcribe(samples: buf, language: language)
+            // "Auto": decide the language once per utterance among English/German/Russian instead of letting
+            // Whisper re-guess every second (that is how a short phrase turned into Icelandic).
+            var r = try await WhisperServer.shared.transcribe(
+                samples: buf, language: language == "auto" ? (lockedLanguage ?? "auto") : language)
+            if language == "auto", lockedLanguage == nil {
+                let chosen = pickLanguage(r)
+                lockedLanguage = chosen
+                if chosen != r.language {
+                    r = try await WhisperServer.shared.transcribe(samples: buf, language: chosen)
+                }
+            }
+            segs = r.segs
         } catch {
             if !reportedError {
                 reportedError = true
@@ -333,13 +378,16 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         // Hypothesis for this window, with absolute times.
         var hyp: [HWord] = []
         var segEnds: [Double] = []
-        for s in segs where s.noSpeech < 0.6 && !WhisperEngine.isNoise(s.text) {
+        for s in segs where s.noSpeech < 0.6 && s.avgLogprob > -1.2
+                            && !WhisperEngine.isNoise(s.text) && !Self.isRepetitive(s.text) {
             for w in s.words {
                 hyp.append(HWord(text: w.text, start: startSec + w.start, end: startSec + w.end,
                                  norm: Self.norm(w.text)))
             }
             segEnds.append(startSec + s.end)
         }
+
+        hyp = Self.collapseRepeats(hyp)
 
         // Only words after what is already confirmed (a word counts as new when its midpoint is later).
         var fresh = hyp.filter { ($0.start + $0.end) / 2 > committedEnd }
@@ -374,6 +422,8 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
             trim(toAbsoluteSample: endAbs)
             prevTail = []
             lastSentCount = -1
+            if let l = lockedLanguage { lastLanguage = l }
+            lockedLanguage = nil
         } else if Double(buf.count) / sr > 10,
                   let e = segEnds.last(where: { $0 > startSec + 1 && $0 <= committedEnd + 0.05 }) {
             // Window is getting long: cut at the end of a fully confirmed segment.
@@ -396,6 +446,41 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
     }
 
     // MARK: Helpers
+
+    private func pickLanguage(_ r: WhisperServer.Result) -> String {
+        let scores = allowedLanguages.map { ($0, r.probs[$0] ?? 0) }
+        let total = scores.reduce(0) { $0 + $1.1 }
+        if total > 0, let best = scores.max(by: { $0.1 < $1.1 }) {
+            if best.1 / total >= 0.6 || lastLanguage == nil { return best.0 }
+            return lastLanguage ?? best.0           // unsure: stay with the previous utterance's language
+        }
+        if allowedLanguages.contains(r.language) { return r.language }
+        return lastLanguage ?? "en"
+    }
+
+    /// Whisper sometimes loops ("a little bit of a little bit of …"). Such text is never real speech.
+    private static func isRepetitive(_ text: String) -> Bool {
+        let w = text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        guard w.count >= 8 else { return false }
+        return Double(Set(w).count) / Double(w.count) < 0.35
+    }
+
+    /// Keeps one copy of any 1–4 word phrase that repeats three or more times in a row.
+    private static func collapseRepeats(_ words: [HWord]) -> [HWord] {
+        var out = words
+        for n in 1...4 {
+            var i = 0
+            while i + 3 * n <= out.count {
+                let group = out[i..<(i + n)].map(\.norm)
+                var reps = 1
+                while i + (reps + 1) * n <= out.count,
+                      out[(i + reps * n)..<(i + (reps + 1) * n)].map(\.norm) == group { reps += 1 }
+                if reps >= 3 { out.removeSubrange((i + n)..<(i + reps * n)) }
+                i += 1
+            }
+        }
+        return out
+    }
 
     private static func norm(_ s: String) -> String {
         String(s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
