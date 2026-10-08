@@ -140,6 +140,7 @@ struct MenuView: View {
                 Button("Transcribe file…") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
+                Button("Vocabulary…") { state.openVocabulary() }
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }

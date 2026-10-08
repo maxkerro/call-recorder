@@ -266,7 +266,8 @@ final class AppState: ObservableObject {
                     status = whisperHint ?? "Whisper is not ready"
                     return
                 }
-                status = "Transcribing \(url.lastPathComponent) with Whisper… (a few minutes for long calls)"
+                let modelName = URL(fileURLWithPath: WhisperEngine.modelPath() ?? "").deletingPathExtension().lastPathComponent
+                status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
                 let lang = WhisperEngine.languageCode(from: localeID)
                 text = try await Task.detached(priority: .userInitiated) {
                     try WhisperEngine.transcribeFile(url, language: lang)
@@ -294,6 +295,8 @@ final class AppState: ObservableObject {
     }
 
     func openFolder() { NSWorkspace.shared.open(outDir) }
+
+    func openVocabulary() { NSWorkspace.shared.open(WhisperEngine.ensureVocabularyFile()) }
 
     // MARK: ffmpeg
 

@@ -39,13 +39,15 @@ enum WhisperEngine {
             .appendingPathComponent("CallRecorder/models", isDirectory: true)
     }
 
-    /// Best model that is installed, preferring accuracy-per-speed.
-    static func modelPath() -> String? {
-        let preferred = ["ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3-turbo.bin",
-                         "ggml-large-v3-q5_0.bin", "ggml-large-v3.bin",
-                         "ggml-medium-q5_0.bin", "ggml-medium.bin",
-                         "ggml-small.bin", "ggml-base.bin"]
-        for name in preferred {
+    /// Best installed model. Files favour accuracy (large-v3); live favours speed (large-v3-turbo).
+    static func modelPath(live: Bool = false) -> String? {
+        let accurate = ["ggml-large-v3.bin", "ggml-large-v3-q5_0.bin",
+                        "ggml-large-v3-turbo.bin", "ggml-large-v3-turbo-q5_0.bin",
+                        "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin"]
+        let fast = ["ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3-turbo.bin",
+                    "ggml-large-v3-q5_0.bin", "ggml-large-v3.bin",
+                    "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin"]
+        for name in (live ? fast : accurate) {
             let p = modelsDir.appendingPathComponent(name).path
             if FileManager.default.fileExists(atPath: p) { return p }
         }
@@ -63,7 +65,53 @@ enum WhisperEngine {
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    static var isLiveReady: Bool { serverPath() != nil && modelPath() != nil }
+    static var isLiveReady: Bool { serverPath() != nil && modelPath(live: true) != nil }
+
+    // MARK: Accuracy helpers
+
+    static var supportDir: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CallRecorder", isDirectory: true)
+    }
+
+    static var vocabularyURL: URL { supportDir.appendingPathComponent("vocabulary.txt") }
+
+    /// Names and terms (one per line, "#" starts a comment) handed to Whisper as context, so it spells them right.
+    static func vocabularyPrompt() -> String {
+        guard let raw = try? String(contentsOf: vocabularyURL, encoding: .utf8) else { return "" }
+        let terms = raw.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        return String(terms.joined(separator: ", ").prefix(600))
+    }
+
+    /// Creates the vocabulary file with a starter template if it doesn't exist, and returns its URL.
+    @discardableResult
+    static func ensureVocabularyFile() -> URL {
+        let url = vocabularyURL
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+            let template = """
+            # Words Whisper should spell correctly: names, products, jargon, abbreviations. One per line.
+            # Lines starting with # are ignored. Keep it short (a few dozen terms) for best results.
+            Mercedes-Benz
+            Luxoft
+            infotainment
+            HMI
+            SAFe
+            Scrum
+            Telemost
+            """
+            try? template.write(to: url, atomically: true, encoding: .utf8)
+        }
+        return url
+    }
+
+    /// Voice-activity-detection model; makes Whisper skip silence and music instead of inventing text.
+    static func vadModelPath() -> String? {
+        let p = modelsDir.appendingPathComponent("ggml-silero-v5.1.2.bin").path
+        return FileManager.default.fileExists(atPath: p) ? p : nil
+    }
 
     /// "en-GB" -> "en"; "auto" stays "auto".
     static func languageCode(from localeID: String) -> String {
@@ -72,14 +120,31 @@ enum WhisperEngine {
 
     // MARK: Running whisper-cli (blocking; call off the main thread)
 
-    static func run(wav: URL, language: String) throws -> [Segment] {
+    static func run(wav: URL, language: String, quality: Bool = false) throws -> [Segment] {
         guard let cli = cliPath() else { throw WhisperError.notInstalled }
         guard let model = modelPath() else { throw WhisperError.noModel }
 
+        let threads = String(max(2, ProcessInfo.processInfo.activeProcessorCount - 2))
+        let base = ["-m", model, "-f", wav.path, "-l", language, "-np", "-t", threads]
+        var extra: [String] = []
+        if quality {
+            extra += ["-bs", "5", "-bo", "5", "-sns"]            // beam search, suppress music/noise tokens
+            let prompt = vocabularyPrompt()
+            if !prompt.isEmpty { extra += ["--prompt", prompt, "--carry-initial-prompt"] }
+            if let vad = vadModelPath() { extra += ["--vad", "-vm", vad] }
+        }
+        do {
+            return try execute(cli: cli, args: base + extra)
+        } catch where !extra.isEmpty {
+            // An older whisper-cli may not know some option: retry with the basics rather than failing.
+            return try execute(cli: cli, args: base)
+        }
+    }
+
+    private static func execute(cli: String, args: [String]) throws -> [Segment] {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli)
-        p.arguments = ["-m", model, "-f", wav.path, "-l", language, "-np",
-                       "-t", String(max(2, ProcessInfo.processInfo.activeProcessorCount - 2))]
+        p.arguments = args
         let out = Pipe()
         p.standardOutput = out
         // whisper-cli is chatty on stderr; a file avoids pipe-buffer deadlocks.
@@ -138,13 +203,15 @@ enum WhisperEngine {
 
         let p = Process()
         p.executableURL = URL(fileURLWithPath: ffmpeg)
-        p.arguments = ["-y", "-loglevel", "error", "-i", input.path, "-ar", "16000", "-ac", "1",
+        // loudnorm brings quiet recordings (a faint mic or call) to a level Whisper handles well.
+        p.arguments = ["-y", "-loglevel", "error", "-i", input.path,
+                       "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "16000", "-ac", "1",
                        "-c:a", "pcm_s16le", wav.path]
         try p.run()
         p.waitUntilExit()
         guard p.terminationStatus == 0 else { throw WhisperError.failed("ffmpeg could not read \(input.lastPathComponent)") }
 
-        let segs = try run(wav: wav, language: language)
+        let segs = try run(wav: wav, language: language, quality: true)
         return format(segs)
     }
 

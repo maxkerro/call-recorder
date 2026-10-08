@@ -79,6 +79,7 @@ actor WhisperServer {
     private var process: Process?
     private var port = 0
     private var startTask: Task<Void, Error>?
+    private var prompt = ""
     private let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("whisper-server.log")
 
     func ensureRunning() async throws {
@@ -98,7 +99,8 @@ actor WhisperServer {
         guard let exe = WhisperEngine.serverPath() else {
             throw WhisperEngine.WhisperError.failed("whisper-server not found. Run ./setup-whisper.sh")
         }
-        guard let model = WhisperEngine.modelPath() else { throw WhisperEngine.WhisperError.noModel }
+        guard let model = WhisperEngine.modelPath(live: true) else { throw WhisperEngine.WhisperError.noModel }
+        prompt = WhisperEngine.vocabularyPrompt()
 
         port = Int.random(in: 20000...40000)
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
@@ -144,6 +146,10 @@ actor WhisperServer {
         field("temperature_inc", "0.0")
         field("suppress_nst", "true")
         field("no_language_probabilities", "true")
+        if !prompt.isEmpty {
+            field("prompt", prompt)
+            field("carry_initial_prompt", "true")
+        }
         body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"chunk.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
         body.append(WAV.data(from: samples))
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
