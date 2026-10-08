@@ -190,7 +190,12 @@ actor WhisperServer {
         field("temperature", "0.0")
         field("temperature_inc", level >= 2 ? "0.0" : "0.2")   // retry hotter when decoding degenerates
         field("suppress_nst", "true")
-        if vadOn { field("vad", "true") }        // only decode where there is speech
+        if vadOn {                               // only decode where there is speech, with generous margins
+            field("vad", "true")
+            field("vad_threshold", "0.4")
+            field("vad_speech_pad_ms", "400")
+            field("vad_min_silence_duration_ms", "500")
+        }
         if language != "auto" { field("no_language_probabilities", "true") }
         if !prompt.isEmpty {
             field("prompt", prompt)
@@ -300,6 +305,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
 
     private struct HWord { var text: String; var start: Double; var end: Double; var norm: String }
     private var committedEnd = 0.0              // absolute seconds up to which text is confirmed
+    private var committedMid = 0.0              // midpoint of the last confirmed word
     private var lastCommitEnd = -100.0
     private var recentNorms: [String] = []
     private var prevTail: [HWord] = []
@@ -408,7 +414,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         // Hypothesis for this window, with absolute times.
         var hyp: [HWord] = []
         var segEnds: [Double] = []
-        for s in segs where s.noSpeech < 0.6 && s.avgLogprob > -1.2
+        for s in segs where s.noSpeech < 0.6 && Self.plausible(s)
                             && !WhisperEngine.isNoise(s.text) && !Self.isRepetitive(s.text) {
             for w in s.words {
                 hyp.append(HWord(text: w.text, start: startSec + w.start, end: startSec + w.end,
@@ -420,7 +426,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         hyp = Self.collapseRepeats(hyp)
 
         // Only words after what is already confirmed (a word counts as new when its midpoint is later).
-        var fresh = hyp.filter { ($0.start + $0.end) / 2 > committedEnd }
+        var fresh = hyp.filter { ($0.start + $0.end) / 2 > committedMid }
 
         // Drop an n-gram that repeats the end of the confirmed text (the window overlaps it).
         if let first = fresh.first, first.start - committedEnd < 1.0 {
@@ -449,6 +455,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
 
         if flush {
             committedEnd = max(committedEnd, endSec)
+            committedMid = max(committedMid, endSec)
             trim(toAbsoluteSample: endAbs)
             prevTail = []
             lastSentCount = -1
@@ -469,6 +476,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
             ev.time = first.start
             ev.newLine = first.start - lastCommitEnd > 1.5
             committedEnd = max(committedEnd, last.end)
+            committedMid = max(committedMid, (last.start + last.end) / 2)
             lastCommitEnd = last.end
             recentNorms = Array((recentNorms + commit.map(\.norm)).suffix(8))
         }
@@ -486,6 +494,12 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         }
         if allowedLanguages.contains(r.language) { return r.language }
         return lastLanguage ?? "en"
+    }
+
+    /// Low average confidence marks garbage in longer segments; one- or two-word segments (often the last word
+    /// of a sentence) are exempt, otherwise the end of a phrase gets dropped.
+    private static func plausible(_ s: WhisperServer.Seg) -> Bool {
+        s.text.split(whereSeparator: \.isWhitespace).count < 3 || s.avgLogprob > -1.3
     }
 
     /// Whisper sometimes loops ("a little bit of a little bit of …"). Such text is never real speech.
