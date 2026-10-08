@@ -8,6 +8,7 @@ Same app as the Mac version, built with Electron so it runs on Windows 10/11 (64
 | 1. Record to MP3 | **Ctrl+Alt+R** or the button. Press again to stop. The MP3 is then transcribed automatically. |
 | 2. Transcribe an MP3 | **Transcribe file…**. A `.txt` is saved next to the file. |
 | 3. Live transcript + MP3 | **Ctrl+Alt+L**. Live "Them" / "Me" lines; the accurate re-check runs after you stop. |
+| 4. Screenshot into the summary | **Ctrl+Alt+S** or the button, while recording. |
 
 Also, like on the Mac: speaker recognition (**Speaker 1, 2…** for the call audio, "Me" for your microphone; word-level
 matching; **Rename speaker** replaces a label with a name), language picker (English, Deutsch, Русский, auto-detect),
@@ -67,3 +68,13 @@ npm test       # unit and end-to-end tests with a fake Whisper, fake Ollama and 
 Nothing you record leaves the PC: recognition, speaker detection and summaries all run locally, and the app talks only to
 127.0.0.1. See [`SECURITY.md`](../SECURITY.md) for the data-flow table, the audit findings and how to verify it
 (`check-network.ps1`, `block-outbound.ps1`, the **Offline mode** checkbox).
+
+## Folder, topic, screenshots
+
+- **Save to:** → **Choose…** sets another recordings folder (a subfolder per day is created inside); **Default** restores
+  `%USERPROFILE%\CallRecordings`. Cloud-synced-looking folders are flagged.
+- **Topic:** type what the call is about; the summary is organised around it and the topic is printed at the top of `<name>.summary.md`.
+- **Screenshots:** during a recording press **Ctrl+Alt+S**. The screen under the mouse is saved in `<name>_screens\`; after
+  the call a local Ollama vision model (`ollama pull qwen2.5vl:7b`) describes each image and the text joins the transcript as
+  `[mm:ss] [Screen] …` lines for the summary. Images go to 127.0.0.1 only.
+- "Thank you"/"Danke"/"Спасибо" that Whisper invents on keyboard noise are dropped when the audio under them is that quiet.

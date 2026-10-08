@@ -3,6 +3,7 @@ import SwiftUI
 import AppKit
 import Speech
 import Carbon.HIToolbox
+import ScreenCaptureKit
 
 enum Engine: String, CaseIterable, Identifiable {
     case whisper, apple
@@ -41,6 +42,13 @@ final class AppState: ObservableObject {
             Diarizer.setOffline(offlineMode)
         }
     }
+    @Published var topic = ""                 // set in advance; steers the summary
+    @Published var shotCount = 0
+    struct Shot { var t: Double; var file: URL }
+    private var shots: [Shot] = []
+    private var shotsByBase: [String: [Shot]] = [:]      // kept until that call's summary is made
+    private var topicByBase: [String: String] = [:]
+    var summaryTopic = ""
     @Published var speakerLabels: [String] = []
     var lastTranscriptURL: URL?
     @Published var identifySpeakers: Bool {
@@ -56,9 +64,13 @@ final class AppState: ObservableObject {
         ("de-DE", "Deutsch"), ("ru-RU", "Русский"),
     ]
 
-    /// All recordings live in <root>/<yyyy-MM-dd>/. The root is the project folder on Max's Mac
-    /// (git-ignored); if it can't be created, ~/Documents/CallRecordings is used instead.
-    let rootDir: URL = {
+    /// All recordings live in <root>/<yyyy-MM-dd>/. By default the root is the project folder on Max's Mac
+    /// (git-ignored; ~/Documents/CallRecordings if that can't be created). A folder chosen in the app wins.
+    @Published var outputRoot: String {
+        didSet { UserDefaults.standard.set(outputRoot, forKey: "outputRoot") }
+    }
+
+    static func defaultRoot() -> URL {
         let fm = FileManager.default
         let preferred = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder/CallRecordings", isDirectory: true)
         if (try? fm.createDirectory(at: preferred, withIntermediateDirectories: true)) != nil {
@@ -69,7 +81,43 @@ final class AppState: ObservableObject {
             .appendingPathComponent("CallRecordings", isDirectory: true)
         try? fm.createDirectory(at: d, withIntermediateDirectories: true)
         return d
-    }()
+    }
+
+    var rootDir: URL {
+        let fm = FileManager.default
+        if outputRoot.hasPrefix("/") {
+            let u = URL(fileURLWithPath: outputRoot, isDirectory: true)
+            if (try? fm.createDirectory(at: u, withIntermediateDirectories: true)) != nil, fm.isWritableFile(atPath: u.path) {
+                return u
+            }
+        }
+        return Self.defaultRoot()
+    }
+
+    /// Opens a folder picker; the choice is remembered. Cloud-synced folders get a warning (the audio would leave the Mac).
+    func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = rootDir
+        panel.message = "Folder for recordings (a subfolder per day is created inside it)"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        setOutputRoot(url.path)
+    }
+
+    func setOutputRoot(_ path: String) {
+        outputRoot = path
+        if !isRecording { outDir = Self.dayFolder(in: rootDir) }
+        if path.isEmpty { status = "Recordings go to the default folder again"; return }
+        let lower = path.lowercased()
+        let synced = ["mobile documents", "icloud", "dropbox", "onedrive", "google drive", "googledrive", "box sync"]
+            .contains { lower.contains($0) }
+        status = synced
+            ? "Recordings will be saved in \(path). Warning: this looks like a cloud-synced folder, so your calls would be uploaded."
+            : "Recordings will be saved in \(path)"
+    }
 
     /// Today's folder; refreshed when a recording starts so one call's files stay together.
     private(set) lazy var outDir: URL = Self.dayFolder(in: rootDir)
@@ -94,6 +142,7 @@ final class AppState: ObservableObject {
 
     init() {
         localeID = UserDefaults.standard.string(forKey: "localeID") ?? "en-US"
+        outputRoot = UserDefaults.standard.string(forKey: "outputRoot") ?? ""
         verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
@@ -122,6 +171,9 @@ final class AppState: ObservableObject {
         HotKeys.shared.register(id: 2, keyCode: kVK_ANSI_L, modifiers: mods) { [weak self] in
             self?.toggle(live: true)
         }
+        HotKeys.shared.register(id: 3, keyCode: kVK_ANSI_S, modifiers: mods) { [weak self] in
+            Task { @MainActor in await self?.takeScreenshot() }
+        }
     }
 
     // MARK: Recording
@@ -143,6 +195,7 @@ final class AppState: ObservableObject {
         outDir = Self.dayFolder(in: rootDir)
         summaryText = ""; summaryNote = ""; summaryTranscript = ""
         checkNote = ""; speakerLabels = []
+        shots = []; shotCount = 0
         if live { LiveLog.reset() }
 
         var sinks: [LiveSink] = []
@@ -239,6 +292,8 @@ final class AppState: ObservableObject {
         transcribers = []
         let finishing = Task { for s in sinks { await s.finish() } }
 
+        if !shots.isEmpty { shotsByBase[baseName] = shots }
+        topicByBase[baseName] = topic
         let mp3 = outDir.appendingPathComponent(baseName + ".mp3")
         status = "Converting to MP3…"
         do {
@@ -502,24 +557,121 @@ final class AppState: ObservableObject {
 
     /// Summarizes a finished transcript with the local Ollama model and saves `<base>.summary.md`.
     func summarize(lines: [String], base: String, dir: URL? = nil) async {
+        let callShots = shotsByBase.removeValue(forKey: base) ?? []
+        let callTopic = topicByBase.removeValue(forKey: base) ?? topic
         guard summarizeCalls else { return }
-        let transcript = lines.joined(separator: "\n")
+        let folder = dir ?? outDir
+
+        var all = lines
+        var shotNote = ""
+        if !callShots.isEmpty {
+            summaryText = ""
+            summaryNote = "Describing the screenshots with a local vision model…"
+            let (described, note) = await describeShots(callShots, topic: callTopic)
+            shotNote = note
+            if !described.isEmpty {
+                try? described.joined(separator: "\n").write(to: folder.appendingPathComponent(base + ".screens.txt"),
+                                                            atomically: true, encoding: .utf8)
+                all = Self.mergeByTime(lines, described)
+            }
+        }
+        let transcript = all.joined(separator: "\n")
         guard transcript.split(whereSeparator: \.isWhitespace).count >= 15 else {
-            summaryText = ""; summaryNote = "Too little speech for a summary."
+            summaryText = ""
+            summaryNote = (["Too little speech for a summary.", shotNote]).filter { !$0.isEmpty }.joined(separator: " ")
             return
         }
         summaryText = ""
         summaryNote = "Summarizing the call with a local model…"
+        summaryTranscript = transcript
+        summaryTopic = callTopic
         do {
-            let text = try await Summarizer.summarize(transcript: transcript)
-            let url = (dir ?? outDir).appendingPathComponent(base + ".summary.md")
+            var text = try await Summarizer.summarize(transcript: transcript, topic: callTopic)
+            let t = callTopic.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if !t.isEmpty { text = "**Topic:** \(t)\n\n" + text }
+            let url = folder.appendingPathComponent(base + ".summary.md")
             try text.write(to: url, atomically: true, encoding: .utf8)
             summaryText = text
-            summaryTranscript = transcript
-            summaryNote = "Summary saved as \(url.lastPathComponent)."
+            summaryNote = (["Summary saved as \(url.lastPathComponent).", shotNote]).filter { !$0.isEmpty }.joined(separator: " ")
         } catch {
-            summaryTranscript = transcript
             summaryNote = "No summary: \(error.localizedDescription) You can still use “Copy for Claude”."
+        }
+    }
+
+    private static func timeText(_ t: Double) -> String {
+        let s = Int(max(t, 0)); return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    /// Screenshot descriptions as transcript lines ("[mm:ss] [Screen] …"), made by a local vision model.
+    private func describeShots(_ shots: [Shot], topic: String) async -> ([String], String) {
+        let models: [String]
+        do { models = try await Summarizer.installedModels() }
+        catch { return ([], "\(shots.count) screenshot(s) saved but not described: \(error.localizedDescription)") }
+        guard let model = Summarizer.pickVisionModel(models) else {
+            return ([], "\(shots.count) screenshot(s) saved but not described: no vision model in Ollama (run: ollama pull qwen2.5vl:7b).")
+        }
+        var out: [String] = []
+        var failed = 0
+        for (i, shot) in shots.enumerated() {
+            summaryNote = "Describing screenshot \(i + 1) of \(shots.count) with \(model)…"
+            do {
+                let png = try Data(contentsOf: shot.file)
+                let d = try await Summarizer.describeImage(png, model: model, topic: topic)
+                out.append("[\(Self.timeText(shot.t))] [Screen] \(d)")
+            } catch { failed += 1 }
+        }
+        return (out, failed > 0 ? "\(failed) screenshot(s) could not be described." : "")
+    }
+
+    /// Inserts the extra lines among the transcript lines by their [mm:ss] time; lines without a time stay put.
+    static func mergeByTime(_ lines: [String], _ extra: [String]) -> [String] {
+        func tOf(_ l: String) -> Int? {
+            guard l.hasPrefix("["), let close = l.firstIndex(of: "]") else { return nil }
+            let p = l[l.index(after: l.startIndex)..<close].split(separator: ":")
+            guard p.count == 2, let m = Int(p[0]), let s = Int(p[1]) else { return nil }
+            return m * 60 + s
+        }
+        let all = lines.enumerated().map { (t: tOf($0.element) ?? -1, i: $0.offset, l: $0.element) }
+                + extra.enumerated().map { (t: tOf($0.element) ?? -1, i: 1_000_000 + $0.offset, l: $0.element) }
+        return all.sorted { $0.t != $1.t ? $0.t < $1.t : $0.i < $1.i }.map(\.l)
+    }
+
+    // MARK: Screenshots
+
+    /// Saves a screenshot of the screen under the mouse (a shared presentation, a picture…) during the call.
+    /// After the call a local vision model describes it and the description joins the transcript for the summary.
+    func takeScreenshot() async {
+        guard isRecording else { status = "Screenshots can be taken while a recording is running."; return }
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            let mouse = NSEvent.mouseLocation
+            let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+            let id = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+            guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first else {
+                throw CaptureError.noDisplay
+            }
+            let cfg = SCStreamConfiguration()
+            cfg.width = display.width * 2
+            cfg.height = display.height * 2
+            cfg.showsCursor = false
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(display: display, excludingWindows: []), configuration: cfg)
+            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                throw NSError(domain: "CallRecorder", code: 5,
+                              userInfo: [NSLocalizedDescriptionKey: "could not encode the image"])
+            }
+            let t = Date().timeIntervalSince(startDate)
+            let dir = outDir.appendingPathComponent(baseName + "_screens", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            let name = String(format: "%02d_", shots.count + 1) + Self.timeText(t).replacingOccurrences(of: ":", with: "-") + ".png"
+            let file = dir.appendingPathComponent(name)
+            try png.write(to: file)
+            shots.append(Shot(t: t, file: file))
+            shotCount = shots.count
+            status = "Screenshot \(shots.count) saved at \(Self.timeText(t))"
+        } catch {
+            status = "Screenshot failed: \(error.localizedDescription)"
         }
     }
 
@@ -527,7 +679,7 @@ final class AppState: ObservableObject {
     func copyForClaude() {
         guard !summaryTranscript.isEmpty else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(Summarizer.pasteText(summaryTranscript), forType: .string)
+        NSPasteboard.general.setString(Summarizer.pasteText(summaryTranscript, topic: summaryTopic), forType: .string)
         summaryNote = "Copied. Paste it into a Claude chat to get the summary."
     }
 

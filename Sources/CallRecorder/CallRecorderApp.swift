@@ -95,6 +95,32 @@ struct MenuView: View {
             .controlSize(.large)
             .disabled(state.busy || (state.isRecording && !state.liveMode))
 
+            Button {
+                Task { await state.takeScreenshot() }
+            } label: {
+                Label(state.shotCount > 0 ? "Screenshot into summary (\(state.shotCount))" : "Screenshot into summary",
+                      systemImage: "camera.viewfinder")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("⌃⌥S").foregroundStyle(.secondary)
+            }
+            .controlSize(.large)
+            .disabled(!state.isRecording)
+
+            TextField("Topic of this call (optional, guides the summary)", text: $state.topic)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 8) {
+                Text("Save to:")
+                Text(state.outputRoot.isEmpty ? state.rootDir.path : state.outputRoot)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(2).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Choose…") { state.chooseFolder() }.fixedSize()
+                Button("Default") { state.setOutputRoot("") }.fixedSize()
+                    .disabled(state.outputRoot.isEmpty)
+            }
+            .disabled(state.isRecording)
+
             Picker("Language", selection: $state.localeID) {
                 ForEach(AppState.languages, id: \.id) { Text($0.name).tag($0.id) }
             }
@@ -177,19 +203,25 @@ struct MenuView: View {
                     }
                     Button("Copy for Claude") { state.copyForClaude() }
                 }
+                .fixedSize()
             }
 
             Divider()
 
-            HStack {
+            // Two rows and buttons that never shrink, so no label is cut off.
+            HStack(spacing: 8) {
                 Button("Transcribe file…") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
                 Button("Vocabulary…") { state.openVocabulary() }
                 Spacer()
+            }
+            .buttonStyle(.bordered)
+            .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
-            .lineLimit(1)
             .fixedSize(horizontal: false, vertical: true)
 
             Text(state.status)
@@ -205,6 +237,6 @@ struct MenuView: View {
             }
         }
         .padding(14)
-        .frame(width: 480)
+        .frame(width: 600)
     }
 }

@@ -446,8 +446,16 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         // Hypothesis for this window, with absolute times.
         var hyp: [HWord] = []
         var segEnds: [Double] = []
-        for s in segs where s.noSpeech < 0.6 && Self.plausible(s)
-                            && !WhisperEngine.isNoise(s.text) && !Self.isRepetitive(s.text) {
+        for s in segs {
+            // Short segments (1-3 words) are where made-up "Thank you" lives: demand more certainty from them.
+            let short = s.text.split(whereSeparator: \.isWhitespace).count <= 3
+            guard s.noSpeech < (short ? 0.4 : 0.6), Self.plausible(s),
+                  !WhisperEngine.isNoise(s.text), !Self.isRepetitive(s.text) else { continue }
+            // "Thank you" over typing or room noise: a generic sign-off on audio that is only faintly above silence.
+            if Self.isGenericFiller(s.text), Self.spanRMS(buf, s.start, s.end, sr: sr) < Self.fillerRMS {
+                LiveLog.write("\(label) dropped quiet filler \"\(s.text)\"")
+                continue
+            }
             for w in s.words {
                 hyp.append(HWord(text: w.text, start: startSec + w.start, end: startSec + w.end,
                                  norm: Self.norm(w.text)))
@@ -564,6 +572,19 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
 
     private static func norm(_ s: String) -> String {
         String(s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+    }
+
+    private static let fillerRMS: Float = 0.015     // real speech is well above this; typing and room noise below
+    private static let fillers: Set<String> = ["thankyou", "thanks", "thankyouverymuch", "thankyousomuch",
+        "thankyouforwatching", "bye", "byebye", "goodbye", "you", "danke", "dankeschön", "dankeschoen", "vielendank",
+        "спасибо", "пока", "благодарюзавнимание"]
+
+    private static func isGenericFiller(_ t: String) -> Bool { fillers.contains(norm(t)) }
+
+    private static func spanRMS(_ x: [Float], _ start: Double, _ end: Double, sr: Double) -> Float {
+        let a = max(0, Int(start * sr)), b = min(x.count, max(a + 1, Int((end * sr).rounded(.up))))
+        guard a < b else { return 0 }
+        return rms(x[a..<b])
     }
 
     private static func rms(_ x: ArraySlice<Float>) -> Float {

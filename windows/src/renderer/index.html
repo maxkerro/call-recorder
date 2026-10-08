@@ -16,6 +16,9 @@
 <button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Ctrl+Alt+R</kbd></button>
 <button id="btnLive" class="big"><span id="lblLive">Record + live transcript</span><kbd>Ctrl+Alt+L</kbd></button>
 
+<button id="btnShot" class="big" disabled><span>Screenshot into summary</span><kbd>Ctrl+Alt+S</kbd></button>
+
+<label class="row">Topic <input id="topic" type="text" maxlength="300" placeholder="Optional: what this call is about (guides the summary)"></label>
 <label class="row">Language
   <select id="language"></select>
 </label>
@@ -24,6 +27,11 @@
 <label class="check"><input type="checkbox" id="summarizeCalls"> Summarize each call (local Ollama)</label>
 
 <label class="check"><input type="checkbox" id="offlineMode"> Offline mode (never download anything)</label>
+
+<div class="row folder">
+  <span>Save to:</span><code id="folderPath"></code>
+  <button id="btnChoose">Choose…</button><button id="btnReset">Default</button>
+</div>
 
 <p id="hint" class="hint hidden"></p>
 <p id="syncWarning" class="hint hidden"></p>

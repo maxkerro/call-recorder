@@ -43,6 +43,13 @@ A download request reveals that you use these tools (and your IP address) to the
 | 8 | Dependencies could change underneath you (`^` / `from:` ranges) | Medium | Windows: exact versions + `package-lock.json`, `npm ci`. Mac: FluidAudio minimum raised to 0.17.4 (has Offline mode). Commit `Package.resolved` after your next successful build to pin it exactly |
 | 9 | No Offline mode | Info | Added to both apps (Mac: FluidAudio's `ModelHub.offlineMode`) |
 
+## Screenshots and the folder setting (added later)
+
+- Screenshots are taken only on your keypress, saved next to the recording, and sent only to Ollama on 127.0.0.1 for a text
+  description. They may show confidential slides: they live in `<name>_screens/` with the recording, so protect or delete them like the audio.
+- The recordings folder can be changed in the app. If you choose a cloud-synced folder (OneDrive, iCloud, Dropbox…) the app warns,
+  because that would upload your calls.
+
 ## What remains your decision
 
 - **Third-party code is trusted, not audited here:** whisper.cpp, ffmpeg, Ollama, FluidAudio, sherpa-onnx, Electron.

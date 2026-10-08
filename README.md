@@ -32,8 +32,10 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 | 1. Record to MP3 | **⌃⌥R** (Control+Option+R) or the menu-bar button. Press again to stop. |
 | 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. A `.txt` is saved next to it. |
 | 3. Live transcript + MP3 | **⌃⌥L**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
+| 4. Screenshot into the summary | **⌃⌥S** or the button, while recording. See "Screenshots" below. |
 
 Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy-MM-dd>/` (one subfolder per day; git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Pick the language (English, Deutsch, Русский) in the menu before recording.
+**Save to:** → **Choose…** picks another folder for recordings (a subfolder per day is created inside it); **Default** goes back to the folder above. A folder that looks cloud-synced (iCloud, Dropbox, OneDrive…) gets a warning, because your calls would be uploaded.
 
 ## Permissions (first launch)
 
@@ -82,6 +84,16 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   `brew install ollama && brew services start ollama && ollama pull qwen2.5:7b` (`qwen2.5:14b` is better if you have
   16 GB+ RAM). Without Ollama, **Copy for Claude** puts the instructions + transcript on the clipboard to paste into a
   Claude chat. Turn it off with the "Summarize each call" checkbox.
+- **Topic:** type what the call is about into the *Topic* field before (or during) the call. The summary is then organised
+  around it, with off-topic items mentioned briefly, and the topic is printed at the top of `<name>.summary.md`.
+- **Screenshots:** while recording, press **⌃⌥S** (or the button) when someone shares a slide or a picture. The screen under your
+  mouse is saved in `<name>_screens/` next to the recording. After the call a local vision model in Ollama describes each
+  image (`ollama pull qwen2.5vl:7b`; llama3.2-vision, gemma3 and llava also work), the descriptions are added to the transcript as
+  `[mm:ss] [Screen] …` lines (also saved as `<name>.screens.txt`) and used in the summary. Without a vision model the images are
+  still saved. Images are only ever sent to Ollama on 127.0.0.1. Screenshots of slides can contain confidential data: they are kept
+  with the recording, so treat that folder accordingly.
+- **Silence and typing:** very short phrases such as "Thank you" or "Danke" that Whisper invents on keyboard noise are dropped when the
+  audio under them is that quiet; a real, audible "thank you" is kept. Details are in `live-debug.log` ("dropped quiet filler").
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

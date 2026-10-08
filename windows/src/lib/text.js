@@ -129,7 +129,13 @@ function collapseRepeats(words) {
   return out;
 }
 
+/** Short sign-offs Whisper invents on faint noise such as typing ("Thank you"). Only dropped when the audio is quiet. */
+const FILLERS = new Set(['thankyou', 'thanks', 'thankyouverymuch', 'thankyousomuch', 'thankyouforwatching', 'bye', 'byebye',
+  'goodbye', 'you', 'danke', 'dankeschön', 'dankeschoen', 'vielendank', 'спасибо', 'пока', 'благодарюзавнимание']);
+const isGenericFiller = (t) => FILLERS.has(norm(t));
+
 module.exports = {
+  isGenericFiller,
   norm, vocabularyLines, vocabularyTerms, vocabularyPrompt, userBlocklist, vocabularySequence, ensureVocabularyFile,
   scrub, echoIndices, stripPromptEcho, isNoise, isRepetitive, collapseRepeats,
 };

@@ -18,6 +18,15 @@ function hasSpeech(x, win, thr) {
   return false;
 }
 
+const FILLER_RMS = 0.015;    // real speech is well above this; typing and room noise are below
+
+/** RMS of the part of the window between two times (seconds from the window start). */
+function spanRms(buf, start, end) {
+  const a = Math.max(0, Math.floor(start * SR));
+  const b = Math.min(buf.length, Math.max(a + 1, Math.ceil(end * SR)));
+  return rms(buf.subarray(a, b));
+}
+
 /** Low average confidence marks garbage in longer segments; one- or two-word segments are exempt, otherwise the
  *  end of a phrase gets dropped. */
 const plausible = (s) => s.text.split(/\s+/).filter(Boolean).length < 3 || s.avgLogprob > -1.3;
@@ -146,7 +155,13 @@ class StreamingTranscriber {
     let hyp = [];
     const segEnds = [];
     for (const s of r.segs) {
-      if (!(s.noSpeech < 0.6) || !plausible(s) || text.isNoise(s.text) || text.isRepetitive(s.text)) continue;
+      const short = s.text.split(/\s+/).filter(Boolean).length <= 3;
+      if (!(s.noSpeech < (short ? 0.4 : 0.6)) || !plausible(s) || text.isNoise(s.text) || text.isRepetitive(s.text)) continue;
+      // "Thank you" on typing or room noise: a generic sign-off over audio that is only faintly above silence.
+      if (text.isGenericFiller(s.text) && spanRms(buf, s.start, s.end) < FILLER_RMS) {
+        log.write(`${this.label} dropped quiet filler "${s.text}"`);
+        continue;
+      }
       for (const w of s.words) {
         hyp.push({ text: w.text, start: startSec + w.start, end: startSec + w.end, norm: text.norm(w.text) });
       }
@@ -248,4 +263,4 @@ class Downsampler {
   }
 }
 
-module.exports = { StreamingTranscriber, Downsampler, rms, hasSpeech, plausible, SR };
+module.exports = { StreamingTranscriber, Downsampler, rms, hasSpeech, plausible, spanRms, SR };

@@ -15,11 +15,19 @@ const vocabularyFile = path.join(supportDir, 'vocabulary.txt');
 const settingsFile = path.join(supportDir, 'settings.json');
 
 /** Root of all recordings; each day gets its own sub-folder. */
-function rootDir() {
+function defaultRoot() {
   // Not in Documents: Windows often syncs Documents to OneDrive, which would copy every recording to the cloud.
-  const base = process.env.CALLREC_DIR || path.join(os.homedir(), 'CallRecordings');
-  fs.mkdirSync(base, { recursive: true });
-  return base;
+  return path.join(os.homedir(), 'CallRecordings');
+}
+
+/** The folder chosen in the app (outputRoot), else CALLREC_DIR, else the default. Falls back if it can't be created. */
+function rootDir() {
+  const chosen = process.env.CALLREC_DIR || loadSettings().outputRoot;
+  for (const base of [chosen, defaultRoot()]) {
+    if (!base) continue;
+    try { fs.mkdirSync(base, { recursive: true }); return base; } catch { /* try the next one */ }
+  }
+  return defaultRoot();
 }
 
 function dayStamp(d = new Date()) {
@@ -38,7 +46,7 @@ function dayFolder(root = rootDir(), d = new Date()) {
   return dir;
 }
 
-const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, offlineMode: false };
+const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, offlineMode: false, outputRoot: '' };
 
 /** A warning when the recordings folder looks like it is synced to a cloud service. */
 function cloudSyncWarning(dir = rootDir()) {
@@ -75,5 +83,5 @@ function languageCode(localeID) {
 
 module.exports = {
   supportDir, modelsDir, binDir, speakerDir, vocabularyFile, settingsFile,
-  rootDir, cloudSyncWarning, dayStamp, timeStamp, dayFolder, loadSettings, saveSettings, languages, languageCode,
+  rootDir, defaultRoot, cloudSyncWarning, dayStamp, timeStamp, dayFolder, loadSettings, saveSettings, languages, languageCode,
 };

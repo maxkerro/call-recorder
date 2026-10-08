@@ -145,3 +145,51 @@ test('summary failure keeps the transcript and offers Copy for Claude', async ()
   assert.match(s.s.summaryNote, /No summary: Ollama isn't running\./);
   assert.match(s.copyForClaudeText(), /Transcript:\n\[00:00\] Me:/);
 });
+
+test('topic reaches the summary and is shown at its top', async () => {
+  const seen = [];
+  const { s } = makeSession({ summarize: async (t, o) => { seen.push(o.topic); return '## Summary\nx '.repeat(2); } });
+  s.setTopic('Sprint planning');
+  await s.toggle(false); feed(s, 4); await s.toggle(false);
+  assert.strictEqual(seen[0], 'Sprint planning');
+  assert.match(s.s.summaryText, /^\*\*Topic:\*\* Sprint planning/);
+});
+
+test('screenshots: saved while recording, described, merged into the summary by time', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  let sent = '';
+  const { s } = makeSession({
+    describeImage: async () => 'Slide: Q3 roadmap',
+    summarize: async (t) => { sent = t; return '## Summary\nok'; },
+  });
+  s.hooks.captureScreen = async () => png;
+  assert.strictEqual(await s.takeScreenshot(), null);            // not recording yet
+  await s.toggle(false); feed(s, 4);
+  const file = await s.takeScreenshot();
+  assert.ok(file && fs.existsSync(file));
+  assert.strictEqual(s.s.shotCount, 1);
+  const models = require('../src/lib/summarizer');
+  const orig = models.installedModels; models.installedModels = async () => ['qwen2.5:7b', 'qwen2.5vl:7b'];
+  try { await s.toggle(false); } finally { models.installedModels = orig; }
+  assert.match(sent, /\[\d\d:\d\d\] \[Screen\] Slide: Q3 roadmap/);
+});
+
+test('merge by time keeps order and puts screen lines in place', () => {
+  const m = Session.mergeByTime(['[00:00] Me: a', '[00:30] Me: b'], ['[00:10] [Screen] s']);
+  assert.deepStrictEqual(m, ['[00:00] Me: a', '[00:10] [Screen] s', '[00:30] Me: b']);
+});
+
+test('recordings folder can be chosen, validated and reset', async () => {
+  const target = path.join(dir, 'custom-root');
+  const envDir = process.env.CALLREC_DIR; delete process.env.CALLREC_DIR;    // the test sandbox pins it
+  const { s } = makeSession();
+  s.setSetting('outputRoot', 'relative/path');
+  assert.match(s.s.status, /Cannot use that folder/);
+  s.setSetting('outputRoot', target);
+  assert.strictEqual(config.rootDir(), target);
+  await s.toggle(false); feed(s, 4); await s.toggle(false);
+  assert.ok(fs.readdirSync(config.dayFolder(target)).some((f) => f.endsWith('.mp3')));
+  s.setSetting('outputRoot', '');
+  assert.notStrictEqual(config.rootDir(), target);
+  process.env.CALLREC_DIR = envDir;
+});

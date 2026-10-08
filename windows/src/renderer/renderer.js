@@ -17,6 +17,13 @@ function render(s) {
   setText($('lblLive'), s.isRecording && live ? 'Stop' : 'Record + live transcript');
   $('btnLive').disabled = s.busy || (s.isRecording && !live);
 
+  $('btnShot').disabled = !s.isRecording;
+  setText($('btnShot').firstElementChild, s.shotCount ? `Screenshot into summary (${s.shotCount})` : 'Screenshot into summary');
+  if (document.activeElement !== $('topic') && $('topic').value !== s.topic) $('topic').value = s.topic;
+  $('topic').disabled = false;
+  setText($('folderPath'), s.settings.outputRoot || s.rootDir);
+  $('btnChoose').disabled = s.isRecording; $('btnReset').disabled = s.isRecording || !s.settings.outputRoot;
+
   const lang = $('language');
   if (!lang.options.length) {
     for (const l of s.languages) lang.add(new Option(l.name, l.id));
@@ -82,6 +89,10 @@ $('btnRename').onclick = () => {
   const to = $('renameTo').value.trim();
   if (to) { window.api.rename($('renameWho').value, to); $('renameTo').value = ''; }
 };
+$('btnShot').onclick = () => window.api.screenshot();
+$('topic').oninput = (e) => window.api.setTopic(e.target.value);
+$('btnChoose').onclick = () => window.api.chooseFolder();
+$('btnReset').onclick = () => window.api.resetFolder();
 $('btnFile').onclick = () => window.api.transcribeFile();
 $('btnFolder').onclick = () => window.api.openFolder();
 $('btnVocab').onclick = () => window.api.openVocabulary();

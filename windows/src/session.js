@@ -29,6 +29,7 @@ class Session {
       diarize: deps.diarize || ((f) => require('./lib/diarize').diarize(f)),
       whisper: deps.whisper || whisper,
       summarize: deps.summarize || summarizer.summarize,
+      describeImage: deps.describeImage || summarizer.describeImage,
       server: deps.server || new WhisperServer(),
       runTool: deps.runTool || tools.run,
       ffmpegPath: deps.ffmpegPath || tools.ffmpegPath,
@@ -39,8 +40,9 @@ class Session {
     this.s = {
       isRecording: false, liveMode: false, busy: false, status: 'Ready', elapsed: '00:00',
       finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [],
-      sysSeconds: 0, micSeconds: 0,
+      sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0,
     };
+    this.shots = [];
     this.lines = [];
     this.openLine = {};
     this.transcribers = [];
@@ -70,7 +72,24 @@ class Session {
     return this.deps.isReady() ? null : 'Whisper isn\'t set up yet: run setup-whisper.ps1 (right-click, Run with PowerShell), then restart the app.';
   }
 
+  setTopic(topic) { this.set({ topic: String(topic || '').slice(0, 300) }); }
+
   setSetting(key, value) {
+    if (key === 'outputRoot') {                       // '' = back to the default folder
+      const dir = String(value || '').trim();
+      if (dir) {
+        try {
+          if (!path.isAbsolute(dir)) throw new Error('the path must be absolute');
+          fs.mkdirSync(dir, { recursive: true });
+          fs.accessSync(dir, fs.constants.W_OK);
+        } catch (e) { this.set({ status: `Cannot use that folder: ${e.message}` }); return; }
+      }
+      this.settings.outputRoot = dir;
+      config.saveSettings(this.settings);
+      if (!this.s.isRecording) this.outDir = config.dayFolder();
+      this.set({ status: dir ? `Recordings will be saved in ${dir}` : 'Recordings go to the default folder again' });
+      return;
+    }
     if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode'].includes(key)) return;
     if (key === 'language' && !config.languages.some((l) => l.id === value)) return;
     this.settings[key] = value;
@@ -91,9 +110,9 @@ class Session {
     try {
       this.lines = []; this.openLine = {};
       this.outDir = config.dayFolder();
-      this.summaryTranscript = ''; this.lastTranscriptFile = null;
+      this.summaryTranscript = ''; this.lastTranscriptFile = null; this.shots = [];
       this.set({ finalLines: [], partials: {}, liveMode: live, summaryText: '', summaryNote: '', checkNote: '',
-        speakerLabels: [], sysSeconds: 0, micSeconds: 0 });
+        speakerLabels: [], sysSeconds: 0, micSeconds: 0, shotCount: 0 });
       if (live) {
         log.reset();
         if (!this.deps.isLiveReady()) {
@@ -155,6 +174,27 @@ class Session {
     }
   }
 
+  /** Saves a screenshot of the screen (a shared presentation, a picture…) taken during the call. It is described by a
+   *  local vision model after the call and becomes part of the summary. */
+  async takeScreenshot() {
+    if (!this.s.isRecording) { this.set({ status: 'Screenshots can be taken while a recording is running.' }); return null; }
+    if (!this.hooks.captureScreen) return null;
+    try {
+      const png = await this.hooks.captureScreen();
+      const t = (Date.now() - this.sessionStart) / 1000;
+      const dir = path.join(this.outDir, this.baseName + '_screens');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${String(this.shots.length + 1).padStart(2, '0')}_${fmtTime(t).replace(':', '-')}.png`);
+      fs.writeFileSync(file, png);
+      this.shots.push({ t, file });
+      this.set({ shotCount: this.shots.length, status: `Screenshot ${this.shots.length} saved at ${fmtTime(t)}` });
+      return file;
+    } catch (e) {
+      this.set({ status: `Screenshot failed: ${e.message || e}` });
+      return null;
+    }
+  }
+
   /** Audio from the renderer: Float32 mono blocks at the capture rate. */
   addAudio(trackName, floats) {
     const tr = this.tracks && this.tracks[trackName];
@@ -181,6 +221,7 @@ class Session {
     this.set({ isRecording: false, elapsed: '00:00' });
     for (const t of Object.values(this.tracks)) { try { fs.closeSync(t.fd); } catch { /* closed */ } t.fd = -1; }
 
+    const shots = this.shots.slice();
     const sinks = this.transcribers; this.transcribers = [];
     const finishing = Promise.all(sinks.map((s) => s.finish()));
     const base = this.baseName;
@@ -222,18 +263,18 @@ class Session {
         this.set({ busy: false });
         const verified = await this.verify({ base, dir, system: wavs.system, mic: wavs.mic, live: liveLines });
         fs.rmSync(tmp, { recursive: true, force: true });
-        await this.summarize(verified, base, dir);
+        await this.summarize(verified, base, dir, shots);
         return;
       }
       this.cleanupTracks();
       this.set({ busy: false });
-      await this.summarize(liveLines, base, dir);
+      await this.summarize(liveLines, base, dir, shots);
       return;
     }
 
     this.cleanupTracks();
     this.set({ busy: false });
-    if (this.settings.summarizeCalls && mp3Saved && this.deps.isReady()) await this.transcribeFile(mp3);   // summary follows
+    if (this.settings.summarizeCalls && mp3Saved && this.deps.isReady()) await this.transcribeFile(mp3, { shots });   // summary follows
   }
 
   async pcmToWav(tr, out) {
@@ -330,7 +371,7 @@ class Session {
     }
   }
 
-  async transcribeFile(file) {
+  async transcribeFile(file, { shots = [] } = {}) {
     if (this.s.busy) return;
     this.set({ busy: true, summaryText: '', summaryNote: '', checkNote: '' });
     let lines = null; const base = path.basename(file, path.extname(file)); const dir = path.dirname(file);
@@ -364,29 +405,70 @@ class Session {
     } finally {
       this.set({ busy: false });
     }
-    if (lines) await this.summarize(lines, base, dir);
+    if (lines) await this.summarize(lines, base, dir, shots);
   }
 
-  async summarize(lines, base, dir) {
+  /** Descriptions of the screenshots as transcript lines ("[mm:ss] [Screen] …"), made by a local vision model. */
+  async describeShots(shots, topic) {
+    if (!shots.length) return { lines: [], note: '' };
+    let models = [];
+    try { models = await summarizer.installedModels(); } catch (e) { return { lines: [], note: `${shots.length} screenshot(s) saved but not described: ${e.message}` }; }
+    const model = summarizer.pickVisionModel(models);
+    if (!model) {
+      return { lines: [], note: `${shots.length} screenshot(s) saved but not described: no vision model in Ollama (run: ollama pull qwen2.5vl:7b).` };
+    }
+    const lines = [];
+    let failed = 0;
+    for (let i = 0; i < shots.length; i++) {
+      this.set({ summaryNote: `Describing screenshot ${i + 1} of ${shots.length} with ${model}…` });
+      try {
+        const d = await this.deps.describeImage(fs.readFileSync(shots[i].file), { model, topic });
+        lines.push(`[${fmtTime(shots[i].t)}] [Screen] ${d}`);
+      } catch { failed++; }
+    }
+    return { lines, note: failed ? `${failed} screenshot(s) could not be described.` : '' };
+  }
+
+  static mergeByTime(lines, extra) {
+    const tOf = (l) => { const m = /^\[(\d+):(\d+)\]/.exec(l); return m ? +m[1] * 60 + +m[2] : Infinity; };
+    const all = [...lines.map((l, i) => ({ l, t: tOf(l), i })), ...extra.map((l, i) => ({ l, t: tOf(l), i: 1e9 + i }))];
+    const keep = (x) => (x.t === Infinity ? -1 : x.t);           // lines without a time stay where they are
+    all.sort((a, b) => (keep(a) - keep(b)) || (a.i - b.i));
+    return all.map((x) => x.l);
+  }
+
+  async summarize(lines, base, dir, shots = []) {
     if (!this.settings.summarizeCalls) return;
-    const transcript = lines.join('\n');
+    const topic = this.s.topic;
+    let described = { lines: [], note: '' };
+    if (shots.length) {
+      this.set({ summaryText: '', summaryNote: 'Describing the screenshots with a local vision model…' });
+      described = await this.describeShots(shots, topic);
+      if (described.lines.length) {
+        try { fs.writeFileSync(path.join(dir || this.outDir, base + '.screens.txt'), described.lines.join('\n')); } catch { /* ignore */ }
+      }
+    }
+    const all = described.lines.length ? Session.mergeByTime(lines, described.lines) : lines;
+    const transcript = all.join('\n');
     if (transcript.split(/\s+/).filter(Boolean).length < 15) {
-      this.set({ summaryText: '', summaryNote: 'Too little speech for a summary.' });
+      this.set({ summaryText: '', summaryNote: ['Too little speech for a summary.', described.note].filter(Boolean).join(' ') });
       return;
     }
     this.set({ summaryText: '', summaryNote: 'Summarizing the call with a local model…' });
     this.summaryTranscript = transcript;
+    this.summaryTopic = topic;
     try {
-      const md = await this.deps.summarize(transcript);
+      const body = await this.deps.summarize(transcript, { topic });
+      const md = (topic ? `**Topic:** ${topic.replace(/\s+/g, ' ')}\n\n` : '') + body;
       const file = path.join(dir || this.outDir, base + '.summary.md');
       fs.writeFileSync(file, md);
-      this.set({ summaryText: md, summaryNote: `Summary saved as ${path.basename(file)}.` });
+      this.set({ summaryText: md, summaryNote: [`Summary saved as ${path.basename(file)}.`, described.note].filter(Boolean).join(' ') });
     } catch (e) {
       this.set({ summaryNote: `No summary: ${e.message} You can still use “Copy for Claude”.` });
     }
   }
 
-  copyForClaudeText() { return this.summaryTranscript ? summarizer.pasteText(this.summaryTranscript) : ''; }
+  copyForClaudeText() { return this.summaryTranscript ? summarizer.pasteText(this.summaryTranscript, this.summaryTopic || '') : ''; }
 
   // ---- speaker names -----------------------------------------------------------------------------------------------
 

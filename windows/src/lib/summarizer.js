@@ -20,12 +20,20 @@ const PROMPT = `You are given the transcript of a work call (lines look like "[m
 ## Decisions (bullets, or "None")
 ## Action items (bullets: who - what - when if mentioned, or "None")
 ## Open questions (bullets, or "None")
+Lines marked [Screen] describe screenshots of what was shown on screen at that moment (slides, documents, diagrams); use them as context and mention them where relevant.
 Use only what is in the transcript; do not invent names, numbers or decisions.`;
+
+/** The topic is typed by the user before the call; it steers the summary. One line, bounded length. */
+function topicLine(topic) {
+  const t = String(topic || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!t) return '';
+  return `Topic of this call, set in advance by the user: "${t}". Organize the summary around this topic: what was said, decided and left open about it; mention anything important but off-topic briefly. If the transcript says nothing about the topic, say so.\n\n`;
+}
 
 class SummaryError extends Error {}
 
 /** Prompt + transcript, for pasting into any chat (e.g. claude.ai). */
-const pasteText = (transcript) => `${PROMPT}\n\nTranscript:\n${transcript}`;
+const pasteText = (transcript, topic = '') => `${PROMPT}\n\n${topicLine(topic)}Transcript:\n${transcript}`;
 
 async function installedModels(base = BASE) {
   assertLoopback(base);
@@ -72,19 +80,50 @@ async function generate(base, model, prompt) {
   return j.response.trim();
 }
 
-async function summarize(transcript, { base = BASE, chunkLimit = 20000 } = {}) {
+async function summarize(transcript, { base = BASE, chunkLimit = 20000, topic = '' } = {}) {
   const installed = await installedModels(base);
   const model = pickModel(installed);
   if (!model) throw new SummaryError('No Ollama model installed. Run: ollama pull qwen2.5:7b');
   const chunks = split(transcript, chunkLimit);      // long calls: summarize chunks first, then the summaries
-  if (chunks.length === 1) return generate(base, model, pasteText(chunks[0]));
+  if (chunks.length === 1) return generate(base, model, pasteText(chunks[0], topic));
   const parts = [];
   for (let i = 0; i < chunks.length; i++) {
     parts.push(await generate(base, model,
       `Summarize part ${i + 1} of ${chunks.length} of a call transcript in detail (key points, decisions, action items with owners, open questions). Same language as the transcript.\n\n${chunks[i]}`));
   }
   return generate(base, model,
-    `${PROMPT}\n\nInstead of a transcript you get notes on consecutive parts of the call:\n\n${parts.join('\n\n---\n\n')}`);
+    `${PROMPT}\n\n${topicLine(topic)}Instead of a transcript you get notes on consecutive parts of the call:\n\n${parts.join('\n\n---\n\n')}`);
 }
 
-module.exports = { summarize, pasteText, installedModels, pickModel, split, SummaryError, PROMPT };
+// ---- screenshots: described by a local vision model ---------------------------------------------------------------------
+
+const visionPreferred = ['qwen2.5vl', 'qwen3-vl', 'llama3.2-vision', 'gemma3', 'minicpm-v', 'llava'];
+
+function pickVisionModel(installed) {
+  for (const p of visionPreferred) {
+    const m = installed.find((x) => x.toLowerCase().startsWith(p));
+    if (m) return m;
+  }
+  return installed.find((x) => /vision|-vl|llava|moondream/i.test(x)) || null;
+}
+
+/** Describes one screenshot (PNG/JPEG bytes). Returns text, or throws SummaryError. */
+async function describeImage(bytes, { base = BASE, model, topic = '' } = {}) {
+  assertLoopback(base);
+  const body = {
+    model, stream: false, options: { temperature: 0.1, num_ctx: 8192 },
+    images: [Buffer.from(bytes).toString('base64')],
+    prompt: 'This is a screenshot from a work call (a shared presentation, document, chart or picture). ' +
+      'Transcribe the visible titles and the key text exactly, then describe any diagram, chart or picture in a sentence. ' +
+      (topic ? `The call is about: ${String(topic).slice(0, 200)}. ` : '') + 'Answer in at most 120 words, plain text, no preamble.',
+  };
+  const r = await fetch(`${base}/api/generate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(300000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (j.error) throw new SummaryError(`Ollama: ${j.error}`);
+  if (r.status !== 200 || typeof j.response !== 'string') throw new SummaryError('Ollama returned an unexpected answer for a screenshot.');
+  return j.response.trim().replace(/\s+/g, ' ');
+}
+
+module.exports = { summarize, pasteText, installedModels, pickModel, pickVisionModel, describeImage, topicLine, split, SummaryError, PROMPT };

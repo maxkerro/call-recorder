@@ -58,3 +58,26 @@ test('nameSpeakers numbers speakers by first appearance and drops tiny ones', ()
   assert.deepStrictEqual(out.map((t) => t.speaker), ['Speaker 1', 'Speaker 2', 'Speaker 1']);
   assert.deepStrictEqual(out.map((t) => t.start), [0, 10, 21]);
 });
+
+test('the topic set in advance is part of the prompt', async () => {
+  const seen = [];
+  const { server, base } = await fakeOllama(['qwen2.5:7b'], (b) => { seen.push(b); return { response: 'ok' }; });
+  try {
+    await summarizer.summarize('[00:00] Me: hello', { base, topic: 'Release 4.2 go/no-go' });
+    assert.match(seen[0].prompt, /Release 4\.2 go\/no-go/);
+    assert.match(summarizer.pasteText('x', 'Budget'), /Budget/);
+    assert.ok(!/set in advance/.test(summarizer.pasteText('x')));
+  } finally { server.close(); }
+});
+
+test('vision model choice and image description go to the local server as base64', async () => {
+  assert.strictEqual(summarizer.pickVisionModel(['qwen2.5:7b', 'llava:7b', 'qwen2.5vl:7b']), 'qwen2.5vl:7b');
+  assert.strictEqual(summarizer.pickVisionModel(['qwen2.5:7b']), null);
+  const seen = [];
+  const { server, base } = await fakeOllama(['qwen2.5vl:7b'], (b) => { seen.push(b); return { response: ' A slide titled Roadmap ' }; });
+  try {
+    const d = await summarizer.describeImage(Buffer.from('png'), { base, model: 'qwen2.5vl:7b', topic: 'Roadmap' });
+    assert.strictEqual(d, 'A slide titled Roadmap');
+    assert.deepStrictEqual(seen[0].images, [Buffer.from('png').toString('base64')]);
+  } finally { server.close(); }
+});

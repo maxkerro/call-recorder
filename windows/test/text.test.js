@@ -36,3 +36,8 @@ test('noise markers and repetition loops are recognised', () => {
   const w = (s) => s.split(' ').map((t) => ({ text: t, norm: t }));
   assert.deepStrictEqual(text.collapseRepeats(w('so so so so go')).map((x) => x.text), ['so', 'go']);
 });
+
+test('generic fillers ("Thank you", "Danke", "Спасибо") are recognised, real sentences are not', () => {
+  for (const t of ['Thank you.', 'thank you', 'Danke!', 'Спасибо.', 'Thanks']) assert.ok(text.isGenericFiller(t), t);
+  for (const t of ['Thank you for the update on the release', 'We need a plan']) assert.ok(!text.isGenericFiller(t), t);
+});

@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const {
   app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, dialog, shell, clipboard,
-  desktopCapturer, session: electronSession,
+  desktopCapturer, screen, session: electronSession,
 } = require('electron');
 const { Session } = require('./session');
 const config = require('./lib/config');
@@ -51,9 +51,19 @@ function rpc(channel) {
   });
 }
 
+/** PNG of the screen the mouse is on (where a shared presentation usually is). Stays on this computer. */
+async function captureScreen() {
+  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const size = { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) };
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
+  const src = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
+  if (!src || src.thumbnail.isEmpty()) throw new Error('no screen image available');
+  return src.thumbnail.toPNG();
+}
+
 function createWindow() {
   win = new BrowserWindow({
-    width: 520, height: 800, minWidth: 460, title: 'CallRecorder', autoHideMenuBar: true,
+    width: 600, height: 860, minWidth: 560, title: 'CallRecorder', autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -78,6 +88,7 @@ function registerHotKeys() {
   const reg = (accel, fn) => { try { if (!globalShortcut.register(accel, fn)) failed.push(accel); } catch { failed.push(accel); } };
   reg('Control+Alt+R', () => session.toggle(false));
   reg('Control+Alt+L', () => session.toggle(true));
+  reg('Control+Alt+S', () => session.takeScreenshot());
   if (failed.length) session.set({ status: `Hotkey already used by another app: ${failed.join(', ')}. Use the buttons instead.` });
 }
 
@@ -88,6 +99,7 @@ function buildTray() {
     { label: 'Show CallRecorder', click: showWindow },
     { label: 'Record / stop   (Ctrl+Alt+R)', click: () => session.toggle(false) },
     { label: 'Record + live / stop   (Ctrl+Alt+L)', click: () => session.toggle(true) },
+    { label: 'Screenshot into summary   (Ctrl+Alt+S)', click: () => session.takeScreenshot() },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -127,6 +139,7 @@ app.whenReady().then(() => {
     changed: (s) => { if (win && !win.isDestroyed()) win.webContents.send('state', s); },
     startCapture: () => rpc('capture:start'),
     stopCapture: () => rpc('capture:stop'),
+    captureScreen: captureScreen,
   });
 
   const trusted = (e) => !!e.senderFrame && isOurPage(e.senderFrame.url);
@@ -139,6 +152,14 @@ app.whenReady().then(() => {
   handle('state', () => session.snapshot());
   handle('toggle', (e, live) => session.toggle(!!live));
   handle('setSetting', (e, k, v) => session.setSetting(k, v));
+  handle('setTopic', (e, t) => session.setTopic(t));
+  handle('screenshot', () => session.takeScreenshot());
+  handle('chooseFolder', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Folder for recordings', defaultPath: config.rootDir(),
+      properties: ['openDirectory', 'createDirectory'] });
+    if (!r.canceled && r.filePaths[0]) session.setSetting('outputRoot', r.filePaths[0]);
+  });
+  handle('resetFolder', () => session.setSetting('outputRoot', ''));
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
   handle('openFolder', () => shell.openPath(config.rootDir()));
   handle('openVocabulary', () => shell.openPath(text.ensureVocabularyFile()));
