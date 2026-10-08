@@ -339,8 +339,11 @@ enum WhisperEngine {
         for (url, label) in [(system, "Them"), (mic, "Me")] {
             guard let url, !isSilent(url) else { continue }
             for seg in try segments(of: url, language: language) {
-                let who = (label == "Them" && !turns.isEmpty) ? (speaker(for: seg, in: turns) ?? label) : label
-                all.append((seg.start, who, seg.text))
+                if label == "Them" && !turns.isEmpty {
+                    all += split(seg, by: turns, fallback: label)
+                } else {
+                    all.append((seg.start, label, seg.text))
+                }
             }
         }
         return lines(from: all)
@@ -348,10 +351,48 @@ enum WhisperEngine {
 
     /// Whole file with speaker labels: diarization of the (mixed) file decides who says each segment.
     static func transcribeFileWithSpeakers(_ input: URL, language: String, turns: [SpeakerTurn]) throws -> [String] {
-        let all = try segments(of: input, language: language).map {
-            (t: $0.start, label: speaker(for: $0, in: turns) ?? "Speaker ?", text: $0.text)
+        var all: [(t: Double, label: String, text: String)] = []
+        for seg in try segments(of: input, language: language) {
+            all += split(seg, by: turns, fallback: "Speaker ?")
         }
         return lines(from: all)
+    }
+
+    /// Word-level speaker assignment: a segment may hold several voices, so each word gets an estimated time
+    /// (spread over the segment in proportion to its length) and the speaker talking at that moment.
+    /// Consecutive words of one speaker are joined again.
+    static func split(_ seg: Segment, by turns: [SpeakerTurn], fallback: String)
+        -> [(t: Double, label: String, text: String)] {
+        let words = seg.text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count > 1, seg.end > seg.start else {
+            return [(seg.start, speaker(for: seg, in: turns) ?? fallback, seg.text)]
+        }
+        let weights = words.map { Double(max($0.count, 2)) }
+        let total = weights.reduce(0, +)
+        var t = seg.start
+        var out: [(t: Double, label: String, text: String)] = []
+        for (w, wt) in zip(words, weights) {
+            let dur = (seg.end - seg.start) * wt / total
+            let mid = t + dur / 2
+            let who = speaker(at: mid, in: turns) ?? out.last?.label ?? fallback
+            if let i = out.indices.last, out[i].label == who {
+                out[i].text += " " + w
+            } else {
+                out.append((t, who, w))
+            }
+            t += dur
+        }
+        return out
+    }
+
+    /// Speaker at a moment; in a gap between turns, the nearest turn within 1.5 s.
+    static func speaker(at time: Double, in turns: [SpeakerTurn]) -> String? {
+        if let t = turns.first(where: { $0.start <= time && time <= $0.end }) { return t.speaker }
+        let near = turns.min { abs(($0.start + $0.end) / 2 - time) - ($0.end - $0.start) / 2
+                             < abs(($1.start + $1.end) / 2 - time) - ($1.end - $1.start) / 2 }
+        guard let n = near else { return nil }
+        let gap = time < n.start ? n.start - time : time - n.end
+        return gap <= 1.5 ? n.speaker : nil
     }
 
     /// The speaker whose turns overlap the segment the most (nil when nobody was detected there).
