@@ -115,7 +115,7 @@ struct MenuView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .lineLimit(2).truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Choose") { state.chooseFolder() }.fixedSize()
+                Button("Choose…") { state.chooseFolder() }.fixedSize()
                 Button("Default") { state.setOutputRoot("") }.fixedSize()
                     .disabled(state.outputRoot.isEmpty)
             }
