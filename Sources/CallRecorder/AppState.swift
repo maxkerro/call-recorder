@@ -129,6 +129,8 @@ final class AppState: ObservableObject {
         partials = [:]
         liveMode = live
         outDir = Self.dayFolder(in: rootDir)
+        summaryText = ""; summaryNote = ""; summaryTranscript = ""
+        checkNote = ""; speakerLabels = []
         if live { LiveLog.reset() }
 
         var sinks: [LiveSink] = []
@@ -480,7 +482,10 @@ final class AppState: ObservableObject {
     func summarize(lines: [String], base: String, dir: URL? = nil) async {
         guard summarizeCalls else { return }
         let transcript = lines.joined(separator: "\n")
-        guard transcript.split(whereSeparator: \.isWhitespace).count >= 15 else { return }
+        guard transcript.split(whereSeparator: \.isWhitespace).count >= 15 else {
+            summaryText = ""; summaryNote = "Too little speech for a summary."
+            return
+        }
         summaryText = ""
         summaryNote = "Summarizing the call with a local model…"
         do {
