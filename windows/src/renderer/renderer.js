@@ -99,7 +99,6 @@ $('btnVocab').onclick = () => window.api.openVocabulary();
 $('btnCopySummary').onclick = () => window.api.copy('summary');
 $('btnCopyClaude').onclick = () => window.api.copy('claude');
 $('btnAbout').onclick = () => window.api.about();
-$('btnQuit').onclick = () => window.api.quit();
 
 window.api.onState(render);
 window.api.state().then(render);

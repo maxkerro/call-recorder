@@ -7,8 +7,8 @@
     <key>CFBundleIdentifier</key><string>local.maxm.CallRecorder</string>
     <key>CFBundleExecutable</key><string>CallRecorder</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.18.23</string>
-    <key>CFBundleVersion</key><string>42</string>
+    <key>CFBundleShortVersionString</key><string>1.18.24</string>
+    <key>CFBundleVersion</key><string>43</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>CallRecorder records your voice as part of the call.</string>

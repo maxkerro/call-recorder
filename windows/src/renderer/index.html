@@ -9,8 +9,11 @@
 </head>
 <body>
 <header>
-  <h1>CallRecorder</h1>
-  <span id="rec" class="rec hidden">● <span id="elapsed">00:00</span></span>
+  <h1>Call Recorder</h1>
+  <div class="head-right">
+    <span id="rec" class="rec hidden">● <span id="elapsed">00:00</span></span>
+    <button id="btnAbout">About</button>
+  </div>
 </header>
 
 <button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Shift+Alt+R</kbd></button>
@@ -63,9 +66,6 @@
   <button id="btnFile">Transcribe file</button>
   <button id="btnFolder">Open folder</button>
   <button id="btnVocab">Vocabulary</button>
-  <span class="spacer"></span>
-  <button id="btnAbout">About</button>
-  <button id="btnQuit">Quit</button>
 </div>
 <p id="status" class="note"></p>
 <p id="checkNote" class="note"></p>

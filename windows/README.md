@@ -85,3 +85,5 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
   it inside that phrase only, so the text is never rewritten. `fixed_transcript.txt` gets the corrected text, `raw_transcript.txt` keeps the
   original, and the window lists what changed. Switch it off with the "Fix glossary terms" checkbox. Keep the glossary to real names
   and jargon; very common words make poor entries.
+
+There is no Quit button: closing the window keeps the app in the system tray; quit from the tray icon's menu (right-click → Quit).

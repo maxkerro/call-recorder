@@ -64,13 +64,14 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("CallRecorder").font(.headline)
+                Text("Call Recorder").font(.headline)
                 Spacer()
                 if state.isRecording {
                     Label(state.elapsed, systemImage: "circle.fill")
                         .foregroundStyle(.red)
                         .monospacedDigit()
                 }
+                Button("About") { AppInfo.show() }
             }
 
             Button {
@@ -211,15 +212,13 @@ struct MenuView: View {
 
             Divider()
 
-            // One row; About and Quit stay at the right. Every button has the same (large) height.
+            // One row. Every button has the same (large) height.
             HStack(spacing: 8) {
                 Button("Transcribe file") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
                 Button("Vocabulary") { state.openVocabulary() }
                 Spacer()
-                Button("About") { AppInfo.show() }
-                Button("Quit") { NSApplication.shared.terminate(nil) }
             }
             .buttonStyle(.bordered)
             .fixedSize(horizontal: false, vertical: true)

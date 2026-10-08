@@ -26,3 +26,4 @@ kbd { color: var(--muted); font: inherit; font-size: 12px; } .on kbd { color: #f
 #transcript p { margin: 0 0 6px; } #transcript p.partial { color: var(--muted); }
 #summaryText { max-height: 240px; overflow-y: auto; white-space: pre-wrap; user-select: text; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+.head-right { display: flex; align-items: center; gap: 12px; }

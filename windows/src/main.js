@@ -213,7 +213,6 @@ app.whenReady().then(() => {
     type: 'info', title: `About ${appinfo.name}`, message: `${appinfo.name} ${appinfo.version}`, buttons: ['OK'], noLink: true,
     detail: `${appinfo.summary}\n\nVersion: ${appinfo.version} (build ${appinfo.build})\nReleased: ${appinfo.releaseDate}\nAuthor: ${appinfo.author}`,
   }));
-  handle('quit', () => { quitting = true; app.quit(); });
 
   createWindow();
   buildTray();

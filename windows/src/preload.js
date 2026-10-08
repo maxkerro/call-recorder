@@ -16,7 +16,6 @@ contextBridge.exposeInMainWorld('api', {
   copy: (what) => ipcRenderer.invoke('copy', what),
   transcribeFile: () => ipcRenderer.invoke('transcribeFile'),
   about: () => ipcRenderer.invoke('about'),
-  quit: () => ipcRenderer.invoke('quit'),
   audio: (track, buffer) => ipcRenderer.send('audio', track, buffer),
   onCapture: (cb) => {
     ipcRenderer.on('capture:start', (_e, id) => cb('start', id));
