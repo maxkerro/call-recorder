@@ -211,14 +211,14 @@ struct MenuView: View {
 
             Divider()
 
-            // One row; Quit stays at the right. Every button has the same (large) height.
+            // One row; About and Quit stay at the right. Every button has the same (large) height.
             HStack(spacing: 8) {
                 Button("Transcribe file") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
                 Button("Vocabulary") { state.openVocabulary() }
-                Button("About") { AppInfo.show() }
                 Spacer()
+                Button("About") { AppInfo.show() }
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
             .buttonStyle(.bordered)
