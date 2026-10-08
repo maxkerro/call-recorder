@@ -444,8 +444,18 @@ final class AppState: ObservableObject {
         var diarizeNote = ""
         if identifySpeakers, let system {
             checkNote = "Finding who speaks when… (the first time this downloads small speaker models)"
-            do { turns = try await Diarizer.shared.diarize(system) }
-            catch { diarizeNote = " Speaker recognition failed (\(error.localizedDescription)); labels are Me/Them." }
+            do {
+                turns = try await Diarizer.shared.diarize(system)
+                let names = Set(turns.map(\.speaker)).sorted()
+                diarizeNote = turns.isEmpty
+                    ? " Speaker recognition found no distinct voices in the call audio."
+                    : " Speakers found: \(names.count) (\(names.joined(separator: ", ")))."
+            } catch {
+                diarizeNote = " Speaker recognition FAILED: \(error). Labels are Me/Them."
+            }
+            LiveLog.write("diarization:\(diarizeNote) turns=\(turns.count)")
+        } else if identifySpeakers {
+            diarizeNote = " Speaker recognition skipped: no call-audio track was captured."
         }
         checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
         do {
