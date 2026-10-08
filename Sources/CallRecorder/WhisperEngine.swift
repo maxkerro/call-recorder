@@ -77,12 +77,94 @@ enum WhisperEngine {
     static var vocabularyURL: URL { supportDir.appendingPathComponent("vocabulary.txt") }
 
     /// Names and terms (one per line, "#" starts a comment) handed to Whisper as context, so it spells them right.
-    static func vocabularyPrompt() -> String {
-        guard let raw = try? String(contentsOf: vocabularyURL, encoding: .utf8) else { return "" }
-        let terms = raw.split(whereSeparator: \.isNewline)
+    private static func vocabularyLines() -> [String] {
+        guard let raw = try? String(contentsOf: vocabularyURL, encoding: .utf8) else { return [] }
+        return raw.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-        return String(terms.joined(separator: ", ").prefix(600))
+    }
+
+    static func vocabularyTerms() -> [String] { vocabularyLines().filter { !$0.hasPrefix("!") } }
+
+    static func vocabularyPrompt() -> String { String(vocabularyTerms().joined(separator: ", ").prefix(600)) }
+
+    /// Phrases that must never appear in a transcript: lines starting with "!" in the vocabulary file.
+    static func userBlocklist() -> [String] {
+        vocabularyLines().filter { $0.hasPrefix("!") }
+            .map { String($0.dropFirst()).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    // MARK: Hallucination filters
+
+    /// Lower-case letters and digits only ("SAFe," -> "safe").
+    static func norm(_ s: String) -> String {
+        String(s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+    }
+
+    /// Phrases Whisper makes up on silence, breath or noise: subtitle credits and sign-offs from its training data.
+    private static let hallucinationPatterns: [NSRegularExpression] = [
+        #"субтитры\s+(?:создавал|создал|сделал|делал|подогнал|предоставил)\p{L}*(?:\s+[\p{L}\d._\-]+)?"#,
+        #"редактор\s+субтитров(?:\s+\p{L}\.[\p{L}\-]+)?"#,
+        #"корректор\s+\p{L}\.[\p{L}\-]+"#,
+        #"dimatorzok"#,
+        #"untertitel\w*\s+(?:der|des|von|im\s+auftrag)\s+[\w.\-]+(?:\s+[\w.\-]+){0,2}"#,
+        #"amara\.org\S*"#,
+        #"(?:thanks?|thank\s+you)\s+for\s+watching\W*"#,
+        #"subtitles?\s+(?:by|made\s+by|created\s+by)\s+[\w.\-]+(?:\s+[\w.\-]+)?"#,
+        #"продолжение\s+следует\W*"#,
+        #"vielen\s+dank\s+f(?:ü|u)rs\s+zuschauen\W*"#,
+        #"подписывайтесь\s+на\s+(?:наш\s+)?канал\W*"#,
+        #"спасибо\s+за\s+просмотр\W*"#,
+    ].compactMap { try? NSRegularExpression(pattern: "(?i)" + $0) }
+
+    /// Removes made-up phrases (built-in list plus the user's "!" lines). Returns the text unchanged if nothing matched.
+    static func scrub(_ text: String, blocklist: [String] = []) -> String {
+        let extra = blocklist.compactMap {
+            try? NSRegularExpression(pattern: NSRegularExpression.escapedPattern(for: $0), options: [.caseInsensitive])
+        }
+        var t = text
+        for re in hallucinationPatterns + extra {
+            t = re.stringByReplacingMatches(in: t, range: NSRange(t.startIndex..., in: t), withTemplate: "")
+        }
+        guard t != text else { return text }
+        return t.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;:-–—")))
+    }
+
+    /// The vocabulary as a flat word sequence, used to recognise Whisper reading its own hint back.
+    static func vocabularySequence() -> [String] {
+        vocabularyTerms().flatMap { $0.split(whereSeparator: \.isWhitespace) }
+            .map { norm(String($0)) }.filter { !$0.isEmpty }
+    }
+
+    /// Indices of words that merely echo the vocabulary hint: a run of 3+ words that follows the vocabulary order,
+    /// or a run of 2+ at the very end of the text (the typical "…, HMI, SAFe, Scrum" tail after a breath).
+    static func echoIndices(_ norms: [String], seq: [String]) -> Set<Int> {
+        guard seq.count >= 2, norms.count >= 2 else { return [] }
+        var drop = Set<Int>()
+        var i = 0
+        while i < norms.count {
+            var best = 0
+            if !norms[i].isEmpty {
+                for start in seq.indices where seq[start] == norms[i] {
+                    var k = 0
+                    while i + k < norms.count, start + k < seq.count, norms[i + k] == seq[start + k] { k += 1 }
+                    best = max(best, k)
+                }
+            }
+            if best >= 3 || (best >= 2 && i + best == norms.count) {
+                for j in i..<(i + best) { drop.insert(j) }
+            }
+            i += max(best, 1)
+        }
+        return drop
+    }
+
+    static func stripPromptEcho(_ text: String, seq: [String]) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let drop = echoIndices(words.map(norm), seq: seq)
+        guard !drop.isEmpty else { return text }
+        return words.enumerated().filter { !drop.contains($0.offset) }.map(\.element).joined(separator: " ")
     }
 
     /// Creates the vocabulary file with a starter template if it doesn't exist, and returns its URL.
@@ -94,6 +176,8 @@ enum WhisperEngine {
             let template = """
             # Words Whisper should spell correctly: names, products, jargon, abbreviations. One per line.
             # Lines starting with # are ignored. Keep it short (a few dozen terms) for best results.
+            # A line starting with ! is a phrase that must never appear in a transcript, for example:
+            # ! Subtitles by the Amara.org community
             Mercedes-Benz
             Luxoft
             infotainment
@@ -169,13 +253,16 @@ enum WhisperEngine {
         guard let re = try? NSRegularExpression(
             pattern: #"^\[(\d+):(\d+):(\d+)[.,](\d+)\s*-->\s*[^\]]*\]\s*(.*)$"#) else { return [] }
         var segs: [Segment] = []
+        let seq = vocabularySequence()
+        let blocked = userBlocklist()
         for line in output.components(separatedBy: .newlines) {
             let ns = line as NSString
             guard let m = re.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) else { continue }
             let h = Double(ns.substring(with: m.range(at: 1))) ?? 0
             let mi = Double(ns.substring(with: m.range(at: 2))) ?? 0
             let s = Double(ns.substring(with: m.range(at: 3))) ?? 0
-            let text = ns.substring(with: m.range(at: 5)).trimmingCharacters(in: .whitespaces)
+            let raw = ns.substring(with: m.range(at: 5)).trimmingCharacters(in: .whitespaces)
+            let text = stripPromptEcho(scrub(raw, blocklist: blocked), seq: seq)
             if isNoise(text) { continue }
             segs.append(Segment(start: h * 3600 + mi * 60 + s, text: text))
         }

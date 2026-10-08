@@ -59,6 +59,10 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
   should spell correctly (one per line), and use headphones so the other side doesn't leak into your mic.
   The most accurate result is always the file transcription, so for important calls record, then transcribe
   the MP3 afterwards.
+- **Made-up text:** Whisper sometimes invents phrases on silence or breath ("Субтитры создавал …", "Thanks for
+  watching", "Untertitel der Amara.org-Community") or reads its vocabulary hint back ("…, HMI, SAFe, Scrum"). Known
+  phrases and hint echoes are filtered out. To block more, add a line starting with `!` to the **Vocabulary…** file,
+  for example `! Subtitles by the Amara.org community`.
 - **Transcript check:** after a live recording the app re-transcribes the call-audio track and your microphone
   track separately with the accurate model, which fills in words the live view missed, and replaces the transcript
   (`<name>.txt`, labelled "Them"/"Me"). The live version stays as `<name>.live.txt`. It runs in the background and

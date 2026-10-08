@@ -115,6 +115,7 @@ actor WhisperServer {
     private var port = 0
     private var startTask: Task<Void, Error>?
     private var prompt = ""
+    private var blocklist: [String] = []
     private var level = 0           // 0 = full features, 1 = no hotter retries
     private var generation = 0      // bumped each time the server is replaced after a crash
     private var lastLog = ""
@@ -139,6 +140,7 @@ actor WhisperServer {
         }
         guard let model = WhisperEngine.modelPath(live: true) else { throw WhisperEngine.WhisperError.noModel }
         prompt = WhisperEngine.vocabularyPrompt()
+        blocklist = WhisperEngine.userBlocklist()
 
         port = Int.random(in: 20000...40000)
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
@@ -229,12 +231,12 @@ actor WhisperServer {
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
             throw WhisperEngine.WhisperError.failed("whisper-server: " + (String(data: data, encoding: .utf8) ?? "request failed"))
         }
-        return Self.parse(data)
+        return Self.parse(data, blocklist: blocklist)
     }
 
     // MARK: JSON
 
-    static func parse(_ data: Data) -> Result {
+    static func parse(_ data: Data, blocklist: [String] = []) -> Result {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return Result(segs: [], probs: [:], language: "")
         }
@@ -251,13 +253,15 @@ actor WhisperServer {
 
         var out: [Seg] = []
         for s in (root["segments"] as? [[String: Any]]) ?? [] {
-            let text = (s["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let rawText = (s["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let text = WhisperEngine.scrub(rawText, blocklist: blocklist)
+            if text.isEmpty { continue }
             let start = (s["start"] as? Double) ?? 0
             let end = (s["end"] as? Double) ?? start
             let noSpeech = (s["no_speech_prob"] as? Double) ?? 0
             let avgLogprob = (s["avg_logprob"] as? Double) ?? 0
             let tokens = (s["words"] as? [[String: Any]]) ?? []
-            var words = mergeTokens(tokens)
+            var words = text == rawText ? mergeTokens(tokens) : []   // text was cleaned: re-space the words
             // Fall back to even spacing inside the segment when word timestamps are missing/unusable.
             if words.isEmpty || words.contains(where: { $0.start < 0 || $0.end < $0.start }) {
                 words = interpolate(text: text, start: start, end: end)
@@ -329,6 +333,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
     private let allowedLanguages = ["en", "de", "ru"]     // what "Auto-detect" chooses between
     private var lockedLanguage: String?                   // language fixed for the current utterance
     private var lastLanguage: String?
+    private let vocabSeq = WhisperEngine.vocabularySequence()
 
     private let sr = 16000.0
     private let silenceRMS: Float = 0.003
@@ -442,6 +447,9 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
             segEnds.append(startSec + s.end)
         }
 
+        // Drop words that only echo the vocabulary hint (Whisper reads it back after a breath).
+        let echo = WhisperEngine.echoIndices(hyp.map(\.norm), seq: vocabSeq)
+        if !echo.isEmpty { hyp = hyp.enumerated().filter { !echo.contains($0.offset) }.map(\.element) }
         hyp = Self.collapseRepeats(hyp)
 
         // Only words after what is already confirmed (a word counts as new when its midpoint is later).
