@@ -67,8 +67,7 @@ final class LiveTranscriber: LiveSink {
     private let lock = NSLock()
     private var stopped = false
 
-    /// (label, text, isFinal, offset) — called on an arbitrary thread; offset is nil = "now".
-    var onUpdate: ((String, String, Bool, Double?) -> Void)?
+    var onEvent: ((LiveEvent) -> Void)?
 
     init(label: String, localeID: String) {
         self.label = label
@@ -91,7 +90,10 @@ final class LiveTranscriber: LiveSink {
             var ended = error != nil
             if let result {
                 let text = result.bestTranscription.formattedString
-                if !text.isEmpty { self.onUpdate?(self.label, text, result.isFinal, nil) }
+                if !text.isEmpty {
+                    self.onEvent?(result.isFinal ? LiveEvent(label: self.label, commit: text, newLine: true)
+                                                 : LiveEvent(label: self.label, tail: text))
+                }
                 if result.isFinal { ended = true }
             }
             if ended {

@@ -128,8 +128,9 @@ struct MenuView: View {
                         .font(.callout)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(height: 180)
-                    .onChange(of: state.finalLines.count) { _, _ in proxy.scrollTo("end") }
+                    .frame(height: 260)
+                    .onChange(of: state.finalLines) { _, _ in proxy.scrollTo("end") }
+                    .onChange(of: state.partials) { _, _ in proxy.scrollTo("end") }
                 }
             }
 

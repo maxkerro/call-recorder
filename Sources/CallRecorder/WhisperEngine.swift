@@ -54,6 +54,17 @@ enum WhisperEngine {
 
     static var isReady: Bool { cliPath() != nil && modelPath() != nil }
 
+    /// whisper-server keeps the model loaded, which live transcription needs. Homebrew's package may include it;
+    /// otherwise setup-whisper.sh builds it into Application Support/CallRecorder/bin.
+    static func serverPath() -> String? {
+        let candidates = ["/opt/homebrew/bin/whisper-server", "/usr/local/bin/whisper-server",
+                          FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                              .appendingPathComponent("CallRecorder/bin/whisper-server").path]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    static var isLiveReady: Bool { serverPath() != nil && modelPath() != nil }
+
     /// "en-GB" -> "en"; "auto" stays "auto".
     static func languageCode(from localeID: String) -> String {
         localeID == "auto" ? "auto" : String(localeID.split(separator: "-").first ?? "en")
@@ -152,137 +163,5 @@ enum WhisperEngine {
             out += seg.text
         }
         return out
-    }
-}
-
-// MARK: - Live transcription with Whisper (step 3)
-
-/// Common interface for the live engines (Whisper chunks / Apple streaming).
-protocol LiveSink: AnyObject {
-    /// (label, text, isFinal, seconds since recording start or nil for "now")
-    var onUpdate: ((String, String, Bool, Double?) -> Void)? { get set }
-    func start()
-    func append(_ buffer: AVAudioPCMBuffer)
-    /// Flush what is pending and wait until all results were delivered.
-    func finish() async
-}
-
-/// Converts arbitrary PCM buffers to 16 kHz mono Float32 (Whisper's input format).
-final class Resampler {
-    private var converter: AVAudioConverter?
-    private var inFormat: AVAudioFormat?
-    private let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000,
-                                          channels: 1, interleaved: false)!
-
-    func convert(_ buf: AVAudioPCMBuffer) -> [Float] {
-        if converter == nil || inFormat != buf.format {
-            converter = AVAudioConverter(from: buf.format, to: outFormat)
-            inFormat = buf.format
-        }
-        guard let conv = converter else { return [] }
-        let cap = AVAudioFrameCount(Double(buf.frameLength) * 16000 / buf.format.sampleRate) + 64
-        guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: cap) else { return [] }
-        var supplied = false
-        var error: NSError?
-        conv.convert(to: out, error: &error) { _, status in
-            if supplied { status.pointee = .noDataNow; return nil }
-            supplied = true
-            status.pointee = .haveData
-            return buf
-        }
-        guard error == nil, let ch = out.floatChannelData else { return [] }
-        return Array(UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength)))
-    }
-}
-
-/// Collects ~10 s of audio per source, skips silence, and sends each chunk through whisper-cli.
-final class ChunkTranscriber: LiveSink {
-    let label: String
-    private let language: String
-    var onUpdate: ((String, String, Bool, Double?) -> Void)?
-
-    private let resampler = Resampler()
-    private var samples: [Float] = []
-    private var handedOff = 0                    // samples already sent for transcription
-    private let lock = NSLock()
-    private let work = DispatchQueue(label: "CallRecorder.whisper")   // one chunk at a time
-    private let pending = DispatchGroup()
-    private let chunkSamples = 16000 * 10
-    private let silenceRMS: Float = 0.004
-
-    init(label: String, language: String) {
-        self.label = label
-        self.language = language
-    }
-
-    func start() {}
-
-    func append(_ buffer: AVAudioPCMBuffer) {
-        let new = resampler.convert(buffer)
-        guard !new.isEmpty else { return }
-        lock.lock()
-        samples.append(contentsOf: new)
-        while samples.count >= chunkSamples {
-            let chunk = Array(samples.prefix(chunkSamples))
-            samples.removeFirst(chunkSamples)
-            submit(chunk, offsetSamples: handedOff)
-            handedOff += chunkSamples
-        }
-        lock.unlock()
-    }
-
-    /// Synchronous on purpose: NSLock must not be used from async contexts.
-    private func flushRemainder() {
-        lock.lock()
-        defer { lock.unlock() }
-        if samples.count >= 16000 {     // at least one second left over
-            submit(samples, offsetSamples: handedOff)
-            handedOff += samples.count
-        }
-        samples.removeAll()
-    }
-
-    func finish() async {
-        flushRemainder()
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-            pending.notify(queue: .global()) { c.resume() }
-        }
-    }
-
-    private func submit(_ chunk: [Float], offsetSamples: Int) {
-        pending.enter()
-        work.async { [self] in
-            defer { pending.leave() }
-            let rms = sqrt(chunk.reduce(0) { $0 + $1 * $1 } / Float(max(chunk.count, 1)))
-            guard rms >= silenceRMS else { return }       // avoids Whisper "hallucinating" on silence
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("chunk-\(UUID().uuidString).wav")
-            defer { try? FileManager.default.removeItem(at: url) }
-            do {
-                try Self.writeWAV(chunk, to: url)
-                let base = Double(offsetSamples) / 16000
-                for seg in try WhisperEngine.run(wav: url, language: language) {
-                    onUpdate?(label, seg.text, true, base + seg.start)
-                }
-            } catch {
-                onUpdate?("System", "(\(label): \(error.localizedDescription))", true, nil)
-            }
-        }
-    }
-
-    /// 16 kHz mono 16-bit PCM WAV.
-    static func writeWAV(_ floats: [Float], to url: URL) throws {
-        var data = Data()
-        func u32(_ v: UInt32) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 4)) }
-        func u16(_ v: UInt16) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 2)) }
-        let byteCount = UInt32(floats.count * 2)
-        data.append("RIFF".data(using: .ascii)!); u32(36 + byteCount)
-        data.append("WAVE".data(using: .ascii)!)
-        data.append("fmt ".data(using: .ascii)!); u32(16); u16(1); u16(1); u32(16000); u32(32000); u16(2); u16(16)
-        data.append("data".data(using: .ascii)!); u32(byteCount)
-        for f in floats {
-            let clipped = max(-1, min(1, f))
-            u16(UInt16(bitPattern: Int16(clipped * 32767)))
-        }
-        try data.write(to: url)
     }
 }

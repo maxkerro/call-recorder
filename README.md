@@ -44,8 +44,13 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
 - Everyone on the call must be fine with being recorded; check your company's and local rules.
 - Two transcription engines (menu → Engine): **Whisper** (local whisper.cpp, default once set up; very good
   for English, German and Russian, plus "Auto-detect" for mixed-language calls) and **Apple** (built-in,
-  no setup, weaker). Live transcript with Whisper updates in ~10 s chunks and skips silence.
-- Whisper's live mode uses extra CPU while recording; on Apple Silicon this is fine.
+  no setup, weaker).
+- **Live mode (⌃⌥L)** keeps the Whisper model loaded in a small local `whisper-server` and re-reads the last
+  seconds of audio every second. Grey text is tentative and gets rewritten; a word becomes final only when two
+  passes agree, and the last word of a pass is never final yet, so a word split across two moments is corrected
+  with its second half instead of staying wrong. A pause of ~1 s ends a line. The model needs a moment to load
+  when recording starts; audio is buffered meanwhile. Updates are as fast as your Mac runs the model (about
+  once a second on Apple Silicon, slower on older Macs).
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

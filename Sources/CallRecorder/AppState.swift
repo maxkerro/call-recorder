@@ -44,7 +44,9 @@ final class AppState: ObservableObject {
 
     private var capture: CaptureSession?
     private var transcribers: [LiveSink] = []
-    private var entries: [(t: Double, text: String)] = []
+    private struct Line { var t: Double; var label: String; var text: String }
+    private var lines: [Line] = []
+    private var openLine: [String: Int] = [:]      // label -> index of its current line in `lines`
     private var baseName = ""
     private var startDate = Date()
     private var timer: Timer?
@@ -88,7 +90,8 @@ final class AppState: ObservableObject {
         busy = true
         defer { busy = false }
         finalLines = []
-        entries = []
+        lines = []
+        openLine = [:]
         partials = [:]
         liveMode = live
 
@@ -96,13 +99,13 @@ final class AppState: ObservableObject {
         if live {
             switch engine {
             case .whisper:
-                guard WhisperEngine.isReady else {
-                    status = whisperHint ?? "Whisper is not ready"
+                guard WhisperEngine.isLiveReady else {
+                    status = "Live Whisper needs whisper-server: run ./setup-whisper.sh, then try again."
                     return
                 }
                 let lang = WhisperEngine.languageCode(from: localeID)
-                sinks = [ChunkTranscriber(label: "Them", language: lang),
-                         ChunkTranscriber(label: "Me", language: lang)]
+                sinks = [StreamingTranscriber(label: "Them", language: lang),
+                         StreamingTranscriber(label: "Me", language: lang)]
             case .apple:
                 guard await Transcription.requestAuthorization() else {
                     status = "Speech recognition not allowed (System Settings → Privacy & Security)"
@@ -125,8 +128,8 @@ final class AppState: ObservableObject {
 
         if live {
             for s in sinks {
-                s.onUpdate = { [weak self] label, text, isFinal, offset in
-                    Task { @MainActor in self?.handleLive(label: label, text: text, isFinal: isFinal, offset: offset) }
+                s.onEvent = { [weak self] event in
+                    Task { @MainActor in self?.handle(event) }
                 }
                 s.start()
             }
@@ -150,7 +153,17 @@ final class AppState: ObservableObject {
         capture = session
         startDate = Date()
         isRecording = true
-        status = live ? "Recording + live transcript (\(engine == .whisper ? "Whisper, text appears every ~10 s" : "Apple"))" : "Recording"
+        status = live ? (engine == .whisper ? "Starting Whisper…" : "Recording + live transcript (Apple)") : "Recording"
+        if live, engine == .whisper {
+            Task {
+                do {
+                    try await WhisperServer.shared.ensureRunning()
+                    if isRecording { status = "Recording + live transcript (Whisper)" }
+                } catch {
+                    status = "Whisper: \(error.localizedDescription)"
+                }
+            }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
@@ -193,8 +206,9 @@ final class AppState: ObservableObject {
         if liveMode {
             if !sinks.isEmpty { status = "Finishing transcript…" }
             await finishing.value
+            await WhisperServer.shared.stop()
             for (label, text) in partials where !text.isEmpty {
-                addEntry(t: Date().timeIntervalSince(startDate), label: label, text: text)
+                handle(LiveEvent(label: label, commit: text, newLine: true))
             }
             partials = [:]
             let txt = outDir.appendingPathComponent(baseName + ".txt")
@@ -205,19 +219,26 @@ final class AppState: ObservableObject {
 
     // MARK: Live transcript
 
-    private func addEntry(t: Double, label: String, text: String) {
-        let s = Int(t)
-        entries.append((t, String(format: "[%02d:%02d] %@: %@", s / 60, s % 60, label, text)))
-        entries.sort { $0.t < $1.t }
-        finalLines = entries.map(\.text)
-    }
-
-    private func handleLive(label: String, text: String, isFinal: Bool, offset: Double?) {
-        if isFinal {
-            addEntry(t: offset ?? Date().timeIntervalSince(startDate), label: label, text: text)
-            partials[label] = nil
-        } else {
-            partials[label] = text
+    /// Confirmed text is appended to the speaker's current line (so the line grows in place); the tentative
+    /// tail is shown separately and is rewritten on every update.
+    private func handle(_ e: LiveEvent) {
+        if let err = e.error {
+            status = "Live transcription: \(err)"
+            return
+        }
+        if !e.commit.isEmpty {
+            let t = e.time ?? Date().timeIntervalSince(startDate)
+            if !e.newLine, let i = openLine[e.label], lines[i].text.count < 300 {
+                lines[i].text += " " + e.commit
+            } else {
+                lines.append(Line(t: t, label: e.label, text: e.commit))
+                openLine[e.label] = lines.count - 1
+            }
+        }
+        partials[e.label] = e.tail.isEmpty ? nil : e.tail
+        finalLines = lines.sorted { $0.t < $1.t }.map { l in
+            let s = Int(max(l.t, 0))
+            return String(format: "[%02d:%02d] %@: %@", s / 60, s % 60, l.label, l.text)
         }
     }
 
