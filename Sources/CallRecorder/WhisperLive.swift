@@ -68,6 +68,32 @@ enum WAV {
     }
 }
 
+// MARK: - Debug log (Documents/CallRecordings/live-debug.log, rewritten for every live session)
+
+enum LiveLog {
+    private static let queue = DispatchQueue(label: "CallRecorder.livelog")
+    private static var t0 = Date()
+    static let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("CallRecordings/live-debug.log")
+
+    static func reset() {
+        queue.async {
+            t0 = Date()
+            try? "".write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    static func write(_ line: String) {
+        queue.async {
+            guard let h = try? FileHandle(forWritingTo: url) else { return }
+            defer { try? h.close() }
+            _ = try? h.seekToEnd()
+            let stamp = String(format: "%7.1f", Date().timeIntervalSince(t0))
+            try? h.write(contentsOf: Data("\(stamp)s \(line)\n".utf8))
+        }
+    }
+}
+
 // MARK: - whisper-server (model stays loaded between requests)
 
 actor WhisperServer {
@@ -89,8 +115,7 @@ actor WhisperServer {
     private var port = 0
     private var startTask: Task<Void, Error>?
     private var prompt = ""
-    private var vadOn = false
-    private var level = 0           // 0 = full features, 1 = no silence detector, 2 = also no hotter retries
+    private var level = 0           // 0 = full features, 1 = no hotter retries
     private var generation = 0      // bumped each time the server is replaced after a crash
     private var lastLog = ""
     private let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("whisper-server.log")
@@ -120,13 +145,9 @@ actor WhisperServer {
         let log = try FileHandle(forWritingTo: logURL)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
-        var args = ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-l", "auto", "-t", "4"]
-        vadOn = false
-        if level == 0, let vad = WhisperEngine.vadModelPath() {
-            args += ["--vad", "-vm", vad]
-            vadOn = true
-        }
-        p.arguments = args
+        // No server-side silence detector here: it crashed or stalled the server on some audio, and the volume
+        // gate in StreamingTranscriber already keeps silence away from Whisper.
+        p.arguments = ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-l", "auto", "-t", "4"]
         p.standardOutput = log
         p.standardError = log
         try p.run()
@@ -168,14 +189,14 @@ actor WhisperServer {
                     startTask = nil
                     level += 1
                 }
-                if level > 2 { break }
+                if level > 1 { break }
             }
         }
         throw WhisperEngine.WhisperError.failed("whisper-server keeps stopping. Its log ends with: \(lastLog)")
     }
 
     private func isServerDown(_ e: URLError) -> Bool {
-        [.networkConnectionLost, .cannotConnectToHost, .cannotParseResponse, .badServerResponse].contains(e.code)
+        [.networkConnectionLost, .cannotConnectToHost, .cannotParseResponse, .badServerResponse, .timedOut].contains(e.code)
             || !(process?.isRunning ?? false)
     }
 
@@ -188,14 +209,8 @@ actor WhisperServer {
         field("response_format", "verbose_json")
         field("language", language)
         field("temperature", "0.0")
-        field("temperature_inc", level >= 2 ? "0.0" : "0.2")   // retry hotter when decoding degenerates
+        field("temperature_inc", level >= 1 ? "0.0" : "0.2")   // retry hotter when decoding degenerates
         field("suppress_nst", "true")
-        if vadOn {                               // only decode where there is speech, with generous margins
-            field("vad", "true")
-            field("vad_threshold", "0.4")
-            field("vad_speech_pad_ms", "400")
-            field("vad_min_silence_duration_ms", "500")
-        }
         if language != "auto" { field("no_language_probabilities", "true") }
         if !prompt.isEmpty {
             field("prompt", prompt)
@@ -208,7 +223,7 @@ actor WhisperServer {
         var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/inference")!)
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 60
+        req.timeoutInterval = 25
 
         let (data, resp) = try await URLSession.shared.upload(for: req, from: body)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
@@ -375,6 +390,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         // Nothing but silence: drop it (keep half a second so the next word's onset isn't clipped).
         guard Self.hasSpeech(buf, win: Int(0.25 * sr), thr: silenceRMS) else {
             let hadTail = !prevTail.isEmpty
+            LiveLog.write("\(label) no speech in buffer (\(buf.count / 16000) s), tail=\(prevTail.count)")
             if final, hadTail { emit(commit: prevTail, tail: []) }
             else if hadTail { onEvent?(LiveEvent(label: label)) }
             prevTail = []
@@ -390,6 +406,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         lastSentCount = buf.count
 
         let segs: [WhisperServer.Seg]
+        let t0 = Date()
         do {
             // "Auto": decide the language once per utterance among English/German/Russian instead of letting
             // Whisper re-guess every second (that is how a short phrase turned into Icelandic).
@@ -403,7 +420,9 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
                 }
             }
             segs = r.segs
+            LiveLog.write("\(label) pass buf=\(String(format: "%.1f", Double(buf.count) / sr))s start=\(String(format: "%.1f", startSec)) lang=\(lockedLanguage ?? language) req=\(Int(Date().timeIntervalSince(t0) * 1000))ms segs=\(r.segs.count) words=\(r.segs.reduce(0) { $0 + $1.words.count }) flush=\(flush) trailSilent=\(trailingSilent) committedMid=\(String(format: "%.1f", committedMid))")
         } catch {
+            LiveLog.write("\(label) ERROR \(error.localizedDescription)")
             if !reportedError {
                 reportedError = true
                 onEvent?(LiveEvent(label: label, error: error.localizedDescription))
@@ -452,6 +471,7 @@ final class StreamingTranscriber: LiveSink, @unchecked Sendable {
         }
         emit(commit: commitWords, tail: tail)
         prevTail = tail
+        LiveLog.write("\(label)   hyp=\(hyp.count) fresh=\(fresh.count) commit=\(commitWords.count) tail=\(tail.count) | \(commitWords.map(\.text).joined(separator: " ")) ‖ \(tail.map(\.text).joined(separator: " "))")
 
         if flush {
             committedEnd = max(committedEnd, endSec)

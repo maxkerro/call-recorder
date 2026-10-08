@@ -94,6 +94,7 @@ final class AppState: ObservableObject {
         openLine = [:]
         partials = [:]
         liveMode = live
+        if live { LiveLog.reset() }
 
         var sinks: [LiveSink] = []
         if live {
