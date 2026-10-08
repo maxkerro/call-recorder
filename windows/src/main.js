@@ -11,6 +11,7 @@ const text = require('./lib/text');
 const log = require('./lib/livelog');
 const net = require('./lib/net');
 const os = require('os');
+const appinfo = require('./lib/appinfo');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 
@@ -208,6 +209,10 @@ app.whenReady().then(() => {
     });
     if (!r.canceled && r.filePaths[0]) session.transcribeFile(r.filePaths[0]);
   });
+  handle('about', () => dialog.showMessageBox(win, {
+    type: 'info', title: `About ${appinfo.name}`, message: `${appinfo.name} ${appinfo.version}`, buttons: ['OK'], noLink: true,
+    detail: `${appinfo.summary}\n\nVersion: ${appinfo.version}\nReleased: ${appinfo.releaseDate}\nAuthor: ${appinfo.author}`,
+  }));
   handle('quit', () => { quitting = true; app.quit(); });
 
   createWindow();

@@ -211,21 +211,17 @@ struct MenuView: View {
 
             Divider()
 
-            // Two rows and buttons that never shrink, so no label is cut off.
+            // One row; Quit stays at the right. Every button has the same (large) height.
             HStack(spacing: 8) {
                 Button("Transcribe file") { state.transcribeFileDialog() }
                     .disabled(state.busy || state.isRecording)
                 Button("Open folder") { state.openFolder() }
                 Button("Vocabulary") { state.openVocabulary() }
-                Spacer()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .fixedSize(horizontal: false, vertical: true)
-            HStack {
+                Button("About") { AppInfo.show() }
                 Spacer()
                 Button("Quit") { NSApplication.shared.terminate(nil) }
             }
+            .buttonStyle(.bordered)
             .fixedSize(horizontal: false, vertical: true)
 
             Text(state.status)
@@ -240,6 +236,7 @@ struct MenuView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .controlSize(.large)
         .padding(14)
         .frame(width: 600)
     }
