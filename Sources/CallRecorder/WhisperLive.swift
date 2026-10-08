@@ -90,6 +90,9 @@ actor WhisperServer {
     private var startTask: Task<Void, Error>?
     private var prompt = ""
     private var vadOn = false
+    private var level = 0           // 0 = full features, 1 = no silence detector, 2 = also no hotter retries
+    private var generation = 0      // bumped each time the server is replaced after a crash
+    private var lastLog = ""
     private let logURL = FileManager.default.temporaryDirectory.appendingPathComponent("whisper-server.log")
 
     func ensureRunning() async throws {
@@ -118,7 +121,8 @@ actor WhisperServer {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         var args = ["-m", model, "--host", "127.0.0.1", "--port", String(port), "-l", "auto", "-t", "4"]
-        if let vad = WhisperEngine.vadModelPath() {
+        vadOn = false
+        if level == 0, let vad = WhisperEngine.vadModelPath() {
             args += ["--vad", "-vm", vad]
             vadOn = true
         }
@@ -147,9 +151,35 @@ actor WhisperServer {
         return (resp as? HTTPURLResponse)?.statusCode == 200
     }
 
+    /// If the server dies (crash, killed), restart it with fewer features and try again. That way one
+    /// misbehaving option never leaves live transcription dead; the log tail explains what went wrong.
     func transcribe(samples: [Float], language: String) async throws -> Result {
-        try await ensureRunning()
+        for _ in 0..<3 {
+            try await ensureRunning()
+            let gen = generation
+            do {
+                return try await request(samples: samples, language: language)
+            } catch let e as URLError where isServerDown(e) {
+                if gen == generation {                      // first request to notice: replace the server
+                    generation += 1
+                    lastLog = String(((try? String(contentsOf: logURL, encoding: .utf8)) ?? "").suffix(400))
+                    process?.terminate()
+                    process = nil
+                    startTask = nil
+                    level += 1
+                }
+                if level > 2 { break }
+            }
+        }
+        throw WhisperEngine.WhisperError.failed("whisper-server keeps stopping. Its log ends with: \(lastLog)")
+    }
 
+    private func isServerDown(_ e: URLError) -> Bool {
+        [.networkConnectionLost, .cannotConnectToHost, .cannotParseResponse, .badServerResponse].contains(e.code)
+            || !(process?.isRunning ?? false)
+    }
+
+    private func request(samples: [Float], language: String) async throws -> Result {
         let boundary = "----CallRecorder\(UUID().uuidString)"
         var body = Data()
         func field(_ name: String, _ value: String) {
@@ -158,7 +188,7 @@ actor WhisperServer {
         field("response_format", "verbose_json")
         field("language", language)
         field("temperature", "0.0")
-        field("temperature_inc", "0.2")          // retry hotter when decoding degenerates (repetition loops)
+        field("temperature_inc", level >= 2 ? "0.0" : "0.2")   // retry hotter when decoding degenerates
         field("suppress_nst", "true")
         if vadOn { field("vad", "true") }        // only decode where there is speech
         if language != "auto" { field("no_language_probabilities", "true") }
