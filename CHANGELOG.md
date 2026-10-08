@@ -7,7 +7,7 @@ Version = **1.MINOR.PATCH**, counted from the git history:
 - every other commit (fixes, polish, wording, docs, hotkey/layout tweaks) raises PATCH;
 - **build** = number of commits at release.
 
-So 1.18.24 (build 43) = 18 feature commits + 24 fix/polish commits after the first one.
+So 1.19.24 (build 44) = 19 feature commits + 24 fix/polish commits after the first one.
 When you release: count again, update `Info.plist`, `Sources/CallRecorder/AppInfo.swift` and `windows/package.json`
 (+ `windows/src/lib/appinfo.js` for the build number); a test checks that they agree.
 
@@ -33,3 +33,4 @@ When you release: count again, update `Info.plist`, `Sources/CallRecorder/AppInf
 | 16 | 0c1a11e | Double-click updater |
 | 17 | f81f95c | One folder per call (audio, raw/fixed transcript, summary, screenshots) |
 | 18 | e2f8633 | About box |
+| 19 | (tabs commit) | Recorder / Settings / About tabs |

@@ -98,7 +98,22 @@ $('btnFolder').onclick = () => window.api.openFolder();
 $('btnVocab').onclick = () => window.api.openVocabulary();
 $('btnCopySummary').onclick = () => window.api.copy('summary');
 $('btnCopyClaude').onclick = () => window.api.copy('claude');
-$('btnAbout').onclick = () => window.api.about();
+
+// ---- tabs ----
+function showTab(name) {
+  for (const t of ['recorder', 'settings', 'about']) {
+    show($('page-' + t), t === name);
+    $('tab' + t[0].toUpperCase() + t.slice(1)).classList.toggle('on', t === name);
+  }
+}
+for (const b of document.querySelectorAll('.tab')) b.onclick = () => showTab(b.dataset.tab);
+window.api.about().then((i) => {
+  $('aboutTitle').textContent = `${i.name} ${i.version}`;
+  $('aboutSummary').textContent = i.summary;
+  $('aboutVersion').textContent = `${i.version} (build ${i.build})`;
+  $('aboutReleased').textContent = i.releaseDate;
+  $('aboutAuthor').textContent = i.author;
+});
 
 window.api.onState(render);
 window.api.state().then(render);

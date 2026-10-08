@@ -209,10 +209,7 @@ app.whenReady().then(() => {
     });
     if (!r.canceled && r.filePaths[0]) session.transcribeFile(r.filePaths[0]);
   });
-  handle('about', () => dialog.showMessageBox(win, {
-    type: 'info', title: `About ${appinfo.name}`, message: `${appinfo.name} ${appinfo.version}`, buttons: ['OK'], noLink: true,
-    detail: `${appinfo.summary}\n\nVersion: ${appinfo.version} (build ${appinfo.build})\nReleased: ${appinfo.releaseDate}\nAuthor: ${appinfo.author}`,
-  }));
+  handle('about', () => ({ ...appinfo }));
 
   createWindow();
   buildTray();

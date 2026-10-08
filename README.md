@@ -24,6 +24,8 @@ mv "CallRecorder.app" /Applications && open "/Applications/CallRecorder.app"
 
 ## Use
 
+The window has three tabs: **Recorder** (record, screenshot, topic, transcript, summary), **Settings** (recordings folder, language, engine and the checkboxes) and **About** (version, release date, author).
+
 The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec" item to the menu bar
 (it shows the elapsed time while recording). Closing the window keeps it running; the hotkeys keep working. There is no Quit button: quit with ⌘Q or from the Dock icon's menu.
 

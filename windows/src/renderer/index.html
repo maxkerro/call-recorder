@@ -10,63 +10,80 @@
 <body>
 <header>
   <h1>Call Recorder</h1>
-  <div class="head-right">
-    <span id="rec" class="rec hidden">● <span id="elapsed">00:00</span></span>
-    <button id="btnAbout">About</button>
-  </div>
+  <span id="rec" class="rec hidden">● <span id="elapsed">00:00</span></span>
 </header>
 
-<button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Shift+Alt+R</kbd></button>
-<button id="btnLive" class="big"><span id="lblLive">Record + live transcript</span><kbd>Shift+Alt+T</kbd></button>
+<nav class="tabs" role="tablist">
+  <button id="tabRecorder" class="tab on" data-tab="recorder" role="tab">Recorder</button>
+  <button id="tabSettings" class="tab" data-tab="settings" role="tab">Settings</button>
+  <button id="tabAbout" class="tab" data-tab="about" role="tab">About</button>
+</nav>
 
-<button id="btnShot" class="big" disabled><span>Screenshot into summary</span><kbd>Shift+Alt+S</kbd></button>
+<main id="page-recorder">
+  <button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Shift+Alt+R</kbd></button>
+  <button id="btnLive" class="big"><span id="lblLive">Record + live transcript</span><kbd>Shift+Alt+T</kbd></button>
+  <button id="btnShot" class="big" disabled><span>Screenshot into summary</span><kbd>Shift+Alt+S</kbd></button>
 
-<label class="row">Topic <input id="topic" type="text" maxlength="300" placeholder="Optional: what this call is about (guides the summary)"></label>
-<label class="row">Language
-  <select id="language"></select>
-</label>
-<label class="check"><input type="checkbox" id="verifyAfterLive"> Check transcript after live recording</label>
-<label class="check"><input type="checkbox" id="identifySpeakers"> Recognize speakers (Speaker 1, 2…)</label>
-<label class="check"><input type="checkbox" id="glossaryCorrect"> Fix glossary terms in transcript (Vocabulary list, local Ollama)</label>
-<label class="check"><input type="checkbox" id="summarizeCalls"> Summarize each call (local Ollama)</label>
+  <label class="row">Topic <input id="topic" type="text" maxlength="300" placeholder="Optional: what this call is about (guides the summary)"></label>
 
-<label class="check"><input type="checkbox" id="offlineMode"> Offline mode (never download anything)</label>
+  <p id="hint" class="hint hidden"></p>
+  <p id="levels" class="note hidden"></p>
 
-<div class="row folder">
-  <span>Save to:</span><code id="folderPath"></code>
-  <button id="btnChoose">Choose…</button><button id="btnReset">Default</button>
-</div>
+  <section id="transcriptBox" class="hidden">
+    <div id="transcript"></div>
+  </section>
 
-<p id="hint" class="hint hidden"></p>
-<p id="syncWarning" class="hint hidden"></p>
-<p id="levels" class="note hidden"></p>
-
-<section id="transcriptBox" class="hidden">
-  <div id="transcript"></div>
-</section>
-
-<div id="renameBox" class="row hidden">
-  <select id="renameWho"></select>
-  <input id="renameTo" type="text" placeholder="Name, e.g. Anna">
-  <button id="btnRename">Rename speaker</button>
-</div>
-
-<section id="summaryBox" class="hidden">
-  <h2>Summary</h2>
-  <div id="summaryText"></div>
-  <p id="summaryNote" class="note"></p>
-  <div class="row">
-    <button id="btnCopySummary" class="hidden">Copy summary</button>
-    <button id="btnCopyClaude">Copy for Claude</button>
+  <div id="renameBox" class="row hidden">
+    <select id="renameWho"></select>
+    <input id="renameTo" type="text" placeholder="Name, e.g. Anna">
+    <button id="btnRename">Rename speaker</button>
   </div>
-</section>
+
+  <section id="summaryBox" class="hidden">
+    <h2>Summary</h2>
+    <div id="summaryText"></div>
+    <p id="summaryNote" class="note"></p>
+    <div class="row">
+      <button id="btnCopySummary" class="hidden">Copy summary</button>
+      <button id="btnCopyClaude">Copy for Claude</button>
+    </div>
+  </section>
+
+  <hr>
+  <div class="row buttons">
+    <button id="btnFile">Transcribe file</button>
+    <button id="btnFolder">Open folder</button>
+    <button id="btnVocab">Vocabulary</button>
+  </div>
+</main>
+
+<main id="page-settings" class="hidden">
+  <div class="row folder">
+    <span>Save to:</span><code id="folderPath"></code>
+    <button id="btnChoose">Choose…</button><button id="btnReset">Default</button>
+  </div>
+  <p id="syncWarning" class="hint hidden"></p>
+  <label class="row">Language
+    <select id="language"></select>
+  </label>
+  <label class="check"><input type="checkbox" id="verifyAfterLive"> Check transcript after live recording</label>
+  <label class="check"><input type="checkbox" id="identifySpeakers"> Recognize speakers (Speaker 1, 2…)</label>
+  <label class="check"><input type="checkbox" id="glossaryCorrect"> Fix glossary terms in transcript (Vocabulary list, local Ollama)</label>
+  <label class="check"><input type="checkbox" id="summarizeCalls"> Summarize each call (local Ollama)</label>
+  <label class="check"><input type="checkbox" id="offlineMode"> Offline mode (never download anything)</label>
+</main>
+
+<main id="page-about" class="hidden">
+  <h2 id="aboutTitle"></h2>
+  <p id="aboutSummary"></p>
+  <dl class="about">
+    <dt>Version</dt><dd id="aboutVersion"></dd>
+    <dt>Released</dt><dd id="aboutReleased"></dd>
+    <dt>Author</dt><dd id="aboutAuthor"></dd>
+  </dl>
+</main>
 
 <hr>
-<div class="row buttons">
-  <button id="btnFile">Transcribe file</button>
-  <button id="btnFolder">Open folder</button>
-  <button id="btnVocab">Vocabulary</button>
-</div>
 <p id="status" class="note"></p>
 <p id="checkNote" class="note"></p>
 

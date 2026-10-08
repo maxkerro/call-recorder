@@ -27,3 +27,8 @@ kbd { color: var(--muted); font: inherit; font-size: 12px; } .on kbd { color: #f
 #summaryText { max-height: 240px; overflow-y: auto; white-space: pre-wrap; user-select: text; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .head-right { display: flex; align-items: center; gap: 12px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tab { flex: 1; }
+.tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0; }
+dl.about dt { color: var(--muted); } dl.about dd { margin: 0; }
