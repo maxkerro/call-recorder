@@ -25,6 +25,10 @@ final class AppState: ObservableObject {
     @Published var localeID: String {
         didSet { UserDefaults.standard.set(localeID, forKey: "localeID") }
     }
+    @Published var checkNote = ""
+    @Published var verifyAfterLive: Bool {
+        didSet { UserDefaults.standard.set(verifyAfterLive, forKey: "verify") }
+    }
     @Published var engine: Engine {
         didSet { UserDefaults.standard.set(engine.rawValue, forKey: "engine") }
     }
@@ -53,6 +57,7 @@ final class AppState: ObservableObject {
 
     init() {
         localeID = UserDefaults.standard.string(forKey: "localeID") ?? "en-US"
+        verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e
         } else {
@@ -196,8 +201,10 @@ final class AppState: ObservableObject {
             try await Self.mixToMP3(system: session.hasSystemAudio ? session.systemURL : nil,
                                     mic: session.hasMicAudio ? session.micURL : nil,
                                     output: mp3)
-            try? FileManager.default.removeItem(at: session.systemURL)
-            try? FileManager.default.removeItem(at: session.micURL)
+            if !(liveMode && verifyAfterLive) {         // the check pass still needs the separate tracks
+                try? FileManager.default.removeItem(at: session.systemURL)
+                try? FileManager.default.removeItem(at: session.micURL)
+            }
             lastFile = mp3
             status = "Saved \(mp3.lastPathComponent)"
         } catch {
@@ -215,6 +222,15 @@ final class AppState: ObservableObject {
             let txt = outDir.appendingPathComponent(baseName + ".txt")
             try? finalLines.joined(separator: "\n").write(to: txt, atomically: true, encoding: .utf8)
             if lastFile != nil { status = "Saved \(mp3.lastPathComponent) + \(txt.lastPathComponent)" }
+
+            if verifyAfterLive, session.hasSystemAudio || session.hasMicAudio {
+                let live = finalLines
+                let system = session.hasSystemAudio ? session.systemURL : nil
+                let mic = session.hasMicAudio ? session.micURL : nil
+                let base = baseName
+                let delete = lastFile != nil
+                Task { await self.verify(base: base, system: system, mic: mic, live: live, deleteTracks: delete) }
+            }
         }
     }
 
@@ -292,6 +308,51 @@ final class AppState: ObservableObject {
             NSWorkspace.shared.activateFileViewerSelecting([out])
         } catch {
             status = "Transcription failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: Check pass
+
+    private static func wordCount(_ lines: [String]) -> Int {
+        lines.reduce(0) { total, line in
+            let body = line.range(of: "]: ").map { String(line[$0.upperBound...]) } ?? line
+            return total + body.split(whereSeparator: \.isWhitespace).count
+        }
+    }
+
+    /// After a live recording: re-transcribe both tracks with the accurate model and replace the transcript.
+    /// The live version is kept next to it as ".live.txt".
+    private func verify(base: String, system: URL?, mic: URL?, live: [String], deleteTracks: Bool) async {
+        defer {
+            if deleteTracks {
+                if let system { try? FileManager.default.removeItem(at: system) }
+                if let mic { try? FileManager.default.removeItem(at: mic) }
+            }
+        }
+        guard WhisperEngine.isReady else {
+            checkNote = "Transcript check skipped: Whisper isn't set up (run ./setup-whisper.sh)."
+            return
+        }
+        checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
+        let lang = WhisperEngine.languageCode(from: localeID)
+        do {
+            let lines = try await Task.detached(priority: .utility) {
+                try WhisperEngine.transcribeTracks(system: system, mic: mic, language: lang)
+            }.value
+            guard !lines.isEmpty else {
+                checkNote = "Transcript check heard no speech; the live transcript was kept."
+                return
+            }
+            try live.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".live.txt"),
+                                                  atomically: true, encoding: .utf8)
+            try lines.joined(separator: "\n").write(to: outDir.appendingPathComponent(base + ".txt"),
+                                                   atomically: true, encoding: .utf8)
+            if !isRecording { finalLines = lines }
+            let before = Self.wordCount(live), after = Self.wordCount(lines)
+            checkNote = "Checked: \(base).txt now has the verified transcript (\(before) → \(after) words). "
+                      + "The live version is saved as \(base).live.txt."
+        } catch {
+            checkNote = "Transcript check failed: \(error.localizedDescription). The live transcript was kept."
         }
     }
 

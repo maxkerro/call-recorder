@@ -59,6 +59,10 @@ Files go to `~/Documents/CallRecordings/`. Pick the language (English, Deutsch, 
   should spell correctly (one per line), and use headphones so the other side doesn't leak into your mic.
   The most accurate result is always the file transcription, so for important calls record, then transcribe
   the MP3 afterwards.
+- **Transcript check:** after a live recording the app re-transcribes the call-audio track and your microphone
+  track separately with the accurate model, which fills in words the live view missed, and replaces the transcript
+  (`<name>.txt`, labelled "Them"/"Me"). The live version stays as `<name>.live.txt`. It runs in the background and
+  takes a few minutes for long calls; switch it off with the checkbox in the menu.
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.

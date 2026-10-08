@@ -105,6 +105,9 @@ struct MenuView: View {
             }
             .disabled(state.isRecording)
 
+            Toggle("Check transcript after live recording", isOn: $state.verifyAfterLive)
+                .disabled(state.isRecording)
+
             if let hint = state.whisperHint {
                 Text(hint)
                     .font(.caption)
@@ -149,6 +152,13 @@ struct MenuView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !state.checkNote.isEmpty {
+                Text(state.checkNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .frame(width: 340)

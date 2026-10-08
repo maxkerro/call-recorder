@@ -193,8 +193,8 @@ enum WhisperEngine {
 
     // MARK: Whole-file transcription (step 2)
 
-    /// Converts any audio file to 16 kHz mono WAV with ffmpeg, runs Whisper, returns text with [mm:ss] markers.
-    static func transcribeFile(_ input: URL, language: String) throws -> String {
+    /// Converts any audio file to 16 kHz mono WAV with ffmpeg (levelling the volume), then runs Whisper.
+    static func segments(of input: URL, language: String) throws -> [Segment] {
         guard let ffmpeg = AppState.ffmpegPath() else {
             throw WhisperError.failed("ffmpeg not found — run: brew install ffmpeg")
         }
@@ -211,8 +211,59 @@ enum WhisperEngine {
         p.waitUntilExit()
         guard p.terminationStatus == 0 else { throw WhisperError.failed("ffmpeg could not read \(input.lastPathComponent)") }
 
-        let segs = try run(wav: wav, language: language, quality: true)
-        return format(segs)
+        return try run(wav: wav, language: language, quality: true)
+    }
+
+    /// Whole file as text with [mm:ss] markers (step 2).
+    static func transcribeFile(_ input: URL, language: String) throws -> String {
+        format(try segments(of: input, language: language))
+    }
+
+    /// True when the track is (nearly) digital silence, e.g. the other side never spoke or nothing played.
+    /// Whisper invents text for silence, so such tracks are skipped.
+    static func isSilent(_ url: URL) -> Bool {
+        guard let ffmpeg = AppState.ffmpegPath() else { return false }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: ffmpeg)
+        p.arguments = ["-hide_banner", "-nostats", "-i", url.path, "-af", "volumedetect", "-f", "null", "-"]
+        let err = Pipe()
+        p.standardError = err
+        p.standardOutput = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return false }
+        let data = err.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        guard let r = text.range(of: "max_volume: "),
+              let end = text[r.upperBound...].range(of: " dB"),
+              let v = Double(text[r.upperBound..<end.lowerBound]) else { return false }
+        return v < -50
+    }
+
+    /// The accurate "check" pass: transcribes the call-audio track ("Them") and the microphone track ("Me")
+    /// separately, so overlapping speech doesn't confuse Whisper, and returns speaker-labelled lines.
+    static func transcribeTracks(system: URL?, mic: URL?, language: String) throws -> [String] {
+        var all: [(t: Double, label: String, text: String)] = []
+        for (url, label) in [(system, "Them"), (mic, "Me")] {
+            guard let url, !isSilent(url) else { continue }
+            for seg in try segments(of: url, language: language) { all.append((seg.start, label, seg.text)) }
+        }
+        all.sort { $0.t < $1.t }
+
+        // Join consecutive segments of the same speaker into one line.
+        var lines: [(t: Double, label: String, text: String, last: Double)] = []
+        for e in all {
+            if let i = lines.indices.last, lines[i].label == e.label,
+               e.t - lines[i].last < 6, lines[i].text.count < 300 {
+                lines[i].text += " " + e.text
+                lines[i].last = e.t
+            } else {
+                lines.append((e.t, e.label, e.text, e.t))
+            }
+        }
+        return lines.map { l in
+            let s = Int(max(l.t, 0))
+            return String(format: "[%02d:%02d] %@: %@", s / 60, s % 60, l.label, l.text)
+        }
     }
 
     /// New paragraph with a [mm:ss] marker roughly every 30 seconds.
