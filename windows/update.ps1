@@ -5,5 +5,5 @@ Set-Location $PSScriptRoot
 Get-Process -Name 'CallRecorder', 'electron' -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "*$PSScriptRoot*" -or $_.ProcessName -eq 'CallRecorder' } | Stop-Process -Force
 git pull
-npm install
+npm ci
 npm start

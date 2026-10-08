@@ -35,6 +35,12 @@ final class AppState: ObservableObject {
     @Published var summarizeCalls: Bool {
         didSet { UserDefaults.standard.set(summarizeCalls, forKey: "summarize") }
     }
+    @Published var offlineMode: Bool {
+        didSet {
+            UserDefaults.standard.set(offlineMode, forKey: "offline")
+            Diarizer.setOffline(offlineMode)
+        }
+    }
     @Published var speakerLabels: [String] = []
     var lastTranscriptURL: URL?
     @Published var identifySpeakers: Bool {
@@ -55,7 +61,10 @@ final class AppState: ObservableObject {
     let rootDir: URL = {
         let fm = FileManager.default
         let preferred = URL(fileURLWithPath: "/Users/mmasliukov/Private/claude/call-recorder/CallRecordings", isDirectory: true)
-        if (try? fm.createDirectory(at: preferred, withIntermediateDirectories: true)) != nil { return preferred }
+        if (try? fm.createDirectory(at: preferred, withIntermediateDirectories: true)) != nil {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: preferred.path)   // owner only
+            return preferred
+        }
         let d = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CallRecordings", isDirectory: true)
         try? fm.createDirectory(at: d, withIntermediateDirectories: true)
@@ -70,6 +79,7 @@ final class AppState: ObservableObject {
         f.dateFormat = "yyyy-MM-dd"
         let d = root.appendingPathComponent(f.string(from: Date()), isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: d.path)   // owner only
         return d
     }
 
@@ -87,11 +97,13 @@ final class AppState: ObservableObject {
         verifyAfterLive = UserDefaults.standard.object(forKey: "verify") as? Bool ?? true
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
+        offlineMode = UserDefaults.standard.bool(forKey: "offline")
         if let saved = UserDefaults.standard.string(forKey: "engine"), let e = Engine(rawValue: saved) {
             engine = e
         } else {
             engine = WhisperEngine.isReady ? .whisper : .apple
         }
+        Diarizer.setOffline(offlineMode)
     }
 
     /// Whisper is selected but not installed → tell the user how to fix it.

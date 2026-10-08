@@ -16,7 +16,7 @@ echo "HMI, SAFe, Scrum"), a summary of every call (`<name>.summary.md`) and a tr
 (the live version stays as `<name>.live.txt`). The window keeps running in the system tray when closed, so the hotkeys
 keep working.
 
-Files go to `Documents\CallRecordings\<yyyy-MM-dd>\` (one folder per day). Set the environment variable
+Files go to `%USERPROFILE%\CallRecordings\<yyyy-MM-dd>\` (one folder per day; deliberately not in Documents, which Windows often syncs to OneDrive). Set the environment variable
 `CALLREC_DIR` to use another folder. Settings, models and tools live in `%APPDATA%\CallRecorder`.
 
 ## Install (once)
@@ -25,7 +25,7 @@ Files go to `Documents\CallRecordings\<yyyy-MM-dd>\` (one folder per day). Set t
 2. In PowerShell, in the `windows` folder of this repository:
 
    ```powershell
-   npm install
+   npm ci
    powershell -ExecutionPolicy Bypass -File .\setup-whisper.ps1    # ffmpeg, whisper.cpp and the models (~1.7 GB)
    npm start
    ```
@@ -61,3 +61,9 @@ npm test       # unit and end-to-end tests with a fake Whisper, fake Ollama and 
 ```
 
 `live-debug.log` (git-ignored, in this folder when run from source) explains what live transcription is doing.
+
+## Privacy
+
+Nothing you record leaves the PC: recognition, speaker detection and summaries all run locally, and the app talks only to
+127.0.0.1. See [`SECURITY.md`](../SECURITY.md) for the data-flow table, the audit findings and how to verify it
+(`check-network.ps1`, `block-outbound.ps1`, the **Offline mode** checkbox).

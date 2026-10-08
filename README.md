@@ -85,3 +85,4 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
 - The app is ad-hoc signed. If macOS forgets the Screen Recording permission after a rebuild,
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.
+- **Privacy:** everything runs on your Mac; see [`SECURITY.md`](SECURITY.md) for the data flow, the review findings and how to verify (`./check-network.sh`, the **Offline mode** checkbox).

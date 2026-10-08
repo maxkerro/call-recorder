@@ -138,6 +138,8 @@ actor WhisperServer {
         process?.terminate()
         process = nil
         startTask = nil
+        let log = logURL                                    // the log may contain recognised text
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { try? FileManager.default.removeItem(at: log) }
     }
 
     private func launch() async throws {

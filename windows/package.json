@@ -10,18 +10,32 @@
     "dist": "electron-builder --win nsis"
   },
   "dependencies": {
-    "sherpa-onnx-node": "^1.12.0"
+    "sherpa-onnx-node": "1.13.8"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
   },
   "build": {
     "appId": "local.maxm.CallRecorder",
     "productName": "CallRecorder",
-    "files": ["src/**/*", "assets/**/*", "package.json"],
-    "asarUnpack": ["node_modules/sherpa-onnx-*/**/*", "src/lib/diarize-worker.js"],
-    "win": { "target": "nsis", "icon": "assets/icon.ico" },
-    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/sherpa-onnx-*/**/*",
+      "src/lib/diarize-worker.js"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

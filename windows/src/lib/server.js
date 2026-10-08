@@ -105,7 +105,10 @@ class WhisperServer {
     this.proc = null;
   }
 
-  stop() { this.kill(); this.startPromise = null; }
+  stop() {
+    this.kill(); this.startPromise = null;
+    setTimeout(() => fs.rm(this.logFile, { force: true }, () => {}), 500);   // the log may contain recognised text
+  }
 
   async launch() {
     const exe = tools.serverPath();

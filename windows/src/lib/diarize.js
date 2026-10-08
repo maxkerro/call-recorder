@@ -4,12 +4,17 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
+const net = require('./net');
 const { Worker } = require('worker_threads');
 const { speakerDir } = require('./config');
 const tools = require('./tools');
 
 const SEG_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2';
 const EMB_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx';
+// SHA-256 of the files as published; a download that does not match is deleted and never used or unpacked.
+const SEG_SHA256 = '24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488';
+const EMB_SHA256 = '5ef208a9da1453335308a6b6f4e6dfbd7e183a38b604de0a57664f45d257fe94';
 const SEG_MODEL = path.join(speakerDir, 'sherpa-onnx-pyannote-segmentation-3-0', 'model.onnx');
 const EMB_MODEL = path.join(speakerDir, 'wespeaker_en_voxceleb_resnet34.onnx');
 
@@ -31,12 +36,25 @@ function download(url, dest, redirects = 6) {
   });
 }
 
+function sha256(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+async function downloadVerified(url, dest, expected) {
+  net.assertOnline('the speaker models');
+  await download(url, dest);
+  if (sha256(dest) !== expected) {
+    fs.rmSync(dest, { force: true });
+    throw new Error(`The speaker model downloaded from ${new URL(url).hostname} does not match its known checksum; it was deleted.`);
+  }
+}
+
 async function ensureModels() {
   fs.mkdirSync(speakerDir, { recursive: true });
-  if (!fs.existsSync(EMB_MODEL)) await download(EMB_URL, EMB_MODEL);
+  if (!fs.existsSync(EMB_MODEL)) await downloadVerified(EMB_URL, EMB_MODEL, EMB_SHA256);
   if (!fs.existsSync(SEG_MODEL)) {
     const archive = path.join(speakerDir, 'segmentation.tar.bz2');
-    await download(SEG_URL, archive);
+    await downloadVerified(SEG_URL, archive, SEG_SHA256);
     // Windows 10+ ships bsdtar as "tar"; it reads .tar.bz2.
     const r = await tools.run('tar', ['-xf', archive, '-C', speakerDir]);
     fs.rmSync(archive, { force: true });
@@ -81,4 +99,4 @@ async function diarize(file) {
   return nameSpeakers(raw);
 }
 
-module.exports = { diarize, nameSpeakers, ensureModels, decode };
+module.exports = { diarize, nameSpeakers, ensureModels, decode, sha256 };

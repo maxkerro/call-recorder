@@ -23,13 +23,15 @@ function render(s) {
   }
   if (lang.value !== s.settings.language) lang.value = s.settings.language;
   lang.disabled = s.isRecording;
-  for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls']) {
+  for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode']) {
     $(k).checked = !!s.settings[k];
     $(k).disabled = s.isRecording;
   }
 
   show($('hint'), !!s.whisperHint);
   setText($('hint'), s.whisperHint || '');
+  show($('syncWarning'), !!s.syncWarning);
+  setText($('syncWarning'), s.syncWarning || '');
   show($('levels'), s.isRecording);
   setText($('levels'), `Captured so far — call audio: ${s.sysSeconds} s, microphone: ${s.micSeconds} s` +
     (s.isRecording && s.elapsed !== '00:00' && s.sysSeconds === 0 ? '  (no call audio yet: is anything playing?)' : ''));
@@ -73,7 +75,7 @@ function render(s) {
 $('btnRec').onclick = () => window.api.toggle(false);
 $('btnLive').onclick = () => window.api.toggle(true);
 $('language').onchange = (e) => window.api.setSetting('language', e.target.value);
-for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls']) {
+for (const k of ['verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode']) {
   $(k).onchange = (e) => window.api.setSetting(k, e.target.checked);
 }
 $('btnRename').onclick = () => {

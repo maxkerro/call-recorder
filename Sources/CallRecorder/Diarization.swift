@@ -12,6 +12,9 @@ actor Diarizer {
     static let shared = Diarizer()
     private var manager: OfflineDiarizerManager?
 
+    /// Offline mode: FluidAudio refuses every network fetch (it only downloads its models, on first use).
+    nonisolated static func setOffline(_ on: Bool) { ModelHub.offlineMode = on }
+
     func diarize(_ url: URL) async throws -> [SpeakerTurn] {
         if manager == nil {
             let m = OfflineDiarizerManager(config: OfflineDiarizerConfig())

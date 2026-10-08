@@ -114,6 +114,9 @@ struct MenuView: View {
             Toggle("Summarize each call (local Ollama)", isOn: $state.summarizeCalls)
                 .disabled(state.isRecording)
 
+            Toggle("Offline mode (never download anything)", isOn: $state.offlineMode)
+                .disabled(state.isRecording)
+
             if !state.speakerLabels.isEmpty && !state.isRecording {
                 Menu("Rename speaker…") {
                     ForEach(state.speakerLabels, id: \.self) { name in

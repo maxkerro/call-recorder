@@ -9,8 +9,27 @@ const { Session } = require('./session');
 const config = require('./lib/config');
 const text = require('./lib/text');
 const log = require('./lib/livelog');
+const net = require('./lib/net');
+const os = require('os');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+
+// No background network chatter from Chromium (component updates, pings, sync…). The app only talks to 127.0.0.1.
+for (const sw of ['disable-background-networking', 'disable-component-update', 'disable-sync', 'no-pings',
+  'disable-domain-reliability', 'no-default-browser-check']) app.commandLine.appendSwitch(sw);
+
+const isOurPage = (url) => typeof url === 'string' && url.startsWith('file://');
+
+// Raw audio of a crashed session would otherwise stay in the temp folder.
+function sweepTemp() {
+  try {
+    for (const n of fs.readdirSync(os.tmpdir())) {
+      if (!/^callrec-/.test(n)) continue;
+      const p = path.join(os.tmpdir(), n);
+      if (Date.now() - fs.statSync(p).mtimeMs > 60 * 60 * 1000) fs.rmSync(p, { recursive: true, force: true });
+    }
+  } catch { /* best effort */ }
+}
 
 // Debug log: in the project folder when run from source (git-ignored), else next to the settings.
 if (!app.isPackaged) log.setFile(path.join(__dirname, '..', 'live-debug.log'));
@@ -38,7 +57,8 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true, nodeIntegration: false,
+      contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,
+      allowRunningInsecureContent: false,
       backgroundThrottling: false,                 // keep capturing while the window is hidden
       autoplayPolicy: 'no-user-gesture-required',  // the audio graph starts from a hotkey, not a click
     },
@@ -76,6 +96,12 @@ function buildTray() {
 
 app.on('second-instance', showWindow);
 
+// The window may only ever show our own page: no navigation, no pop-ups.
+app.on('web-contents-created', (_e, wc) => {
+  wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+  wc.on('will-navigate', (ev) => ev.preventDefault());
+});
+
 app.whenReady().then(() => {
   const ses = electronSession.defaultSession;
   // System audio: "loopback" captures everything you hear (Teams, Telemost, browser…), like the Mac version.
@@ -84,8 +110,18 @@ app.whenReady().then(() => {
       callback({ video: sources[0], audio: 'loopback' });
     }).catch(() => callback({}));
   });
-  ses.setPermissionRequestHandler((wc, permission, cb) => cb(['media', 'display-capture'].includes(permission)));
-  ses.setPermissionCheckHandler((wc, permission) => ['media', 'display-capture'].includes(permission));
+  ses.setPermissionRequestHandler((wc, permission, cb) =>
+    cb(['media', 'display-capture'].includes(permission) && isOurPage(wc.getURL())));
+  ses.setPermissionCheckHandler((wc, permission) =>
+    ['media', 'display-capture'].includes(permission) && !!wc && isOurPage(wc.getURL()));
+  // Defence in depth: nothing in the window may reach anything but local files and this computer.
+  ses.webRequest.onBeforeRequest((details, cb) => {
+    const u = details.url;
+    const ok = /^(file|devtools|data|blob):/.test(u) || net.isLoopbackUrl(u);
+    if (!ok) log.write(`BLOCKED request to ${u}`);
+    cb({ cancel: !ok });
+  });
+  sweepTemp();
 
   session = new Session({
     changed: (s) => { if (win && !win.isDestroyed()) win.webContents.send('state', s); },
@@ -93,26 +129,31 @@ app.whenReady().then(() => {
     stopCapture: () => rpc('capture:stop'),
   });
 
-  ipcMain.on('audio', (e, track, buf) => session.addAudio(track, new Float32Array(buf)));
-  ipcMain.on('capture:reply', (e, id, r) => { const f = pending.get(id); if (f) { pending.delete(id); f(r); } });
-  ipcMain.handle('state', () => session.snapshot());
-  ipcMain.handle('toggle', (e, live) => session.toggle(!!live));
-  ipcMain.handle('setSetting', (e, k, v) => session.setSetting(k, v));
-  ipcMain.handle('rename', (e, a, b) => session.renameSpeaker(a, b));
-  ipcMain.handle('openFolder', () => shell.openPath(config.rootDir()));
-  ipcMain.handle('openVocabulary', () => shell.openPath(text.ensureVocabularyFile()));
-  ipcMain.handle('copy', (e, what) => {
+  const trusted = (e) => !!e.senderFrame && isOurPage(e.senderFrame.url);
+  const handle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => (trusted(e) ? fn(e, ...a) : undefined));
+  ipcMain.on('audio', (e, track, buf) => { if (trusted(e)) session.addAudio(track, new Float32Array(buf)); });
+  ipcMain.on('capture:reply', (e, id, r) => {
+    if (!trusted(e)) return;
+    const f = pending.get(id); if (f) { pending.delete(id); f(r); }
+  });
+  handle('state', () => session.snapshot());
+  handle('toggle', (e, live) => session.toggle(!!live));
+  handle('setSetting', (e, k, v) => session.setSetting(k, v));
+  handle('rename', (e, a, b) => session.renameSpeaker(a, b));
+  handle('openFolder', () => shell.openPath(config.rootDir()));
+  handle('openVocabulary', () => shell.openPath(text.ensureVocabularyFile()));
+  handle('copy', (e, what) => {
     clipboard.writeText(what === 'claude' ? session.copyForClaudeText() : session.s.summaryText);
     if (what === 'claude') session.set({ summaryNote: 'Copied. Paste it into a Claude chat to get the summary.' });
   });
-  ipcMain.handle('transcribeFile', async () => {
+  handle('transcribeFile', async () => {
     const r = await dialog.showOpenDialog(win, {
       title: 'Choose an audio file to transcribe', defaultPath: config.dayFolder(),
       filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'flac', 'ogg', 'mp4', 'aac'] }], properties: ['openFile'],
     });
     if (!r.canceled && r.filePaths[0]) session.transcribeFile(r.filePaths[0]);
   });
-  ipcMain.handle('quit', () => { quitting = true; app.quit(); });
+  handle('quit', () => { quitting = true; app.quit(); });
 
   createWindow();
   buildTray();

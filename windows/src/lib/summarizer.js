@@ -1,6 +1,17 @@
 'use strict';
 
-const BASE = process.env.OLLAMA_HOST ? `http://${process.env.OLLAMA_HOST.replace(/^https?:\/\//, '')}` : 'http://127.0.0.1:11434';
+const { isLoopbackUrl, assertLoopback } = require('./net');
+
+// Ollama must run on this computer. An OLLAMA_HOST that points elsewhere is ignored: transcripts never leave the PC.
+function defaultBase() {
+  const h = process.env.OLLAMA_HOST;
+  if (h) {
+    const url = `http://${h.replace(/^https?:\/\//, '')}`;
+    if (isLoopbackUrl(url)) return url;
+  }
+  return 'http://127.0.0.1:11434';
+}
+const BASE = defaultBase();
 const preferred = ['qwen2.5:14b', 'qwen2.5:7b', 'llama3.1:8b', 'gemma2:9b', 'mistral:7b', 'llama3.2:3b'];
 
 const PROMPT = `You are given the transcript of a work call (lines look like "[mm:ss] Speaker: text"). It may contain recognition errors. Write a concise summary in the language the call was mostly held in, in Markdown, with these sections:
@@ -17,6 +28,7 @@ class SummaryError extends Error {}
 const pasteText = (transcript) => `${PROMPT}\n\nTranscript:\n${transcript}`;
 
 async function installedModels(base = BASE) {
+  assertLoopback(base);
   try {
     const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3000) });
     const j = await r.json();
@@ -47,6 +59,7 @@ function split(textIn, limit) {
 }
 
 async function generate(base, model, prompt) {
+  assertLoopback(base);
   const r = await fetch(`${base}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

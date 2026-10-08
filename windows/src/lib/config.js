@@ -16,7 +16,8 @@ const settingsFile = path.join(supportDir, 'settings.json');
 
 /** Root of all recordings; each day gets its own sub-folder. */
 function rootDir() {
-  const base = process.env.CALLREC_DIR || path.join(os.homedir(), 'Documents', 'CallRecordings');
+  // Not in Documents: Windows often syncs Documents to OneDrive, which would copy every recording to the cloud.
+  const base = process.env.CALLREC_DIR || path.join(os.homedir(), 'CallRecordings');
   fs.mkdirSync(base, { recursive: true });
   return base;
 }
@@ -37,7 +38,13 @@ function dayFolder(root = rootDir(), d = new Date()) {
   return dir;
 }
 
-const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true };
+const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, offlineMode: false };
+
+/** A warning when the recordings folder looks like it is synced to a cloud service. */
+function cloudSyncWarning(dir = rootDir()) {
+  const m = /onedrive|dropbox|google ?drive|icloud|\bbox\b|nextcloud|sync/i.exec(dir);
+  return m ? `The recordings folder (${dir}) looks cloud-synced (“${m[0]}”). Choose another folder with CALLREC_DIR so recordings stay on this PC.` : null;
+}
 
 function loadSettings() {
   try {
@@ -68,5 +75,5 @@ function languageCode(localeID) {
 
 module.exports = {
   supportDir, modelsDir, binDir, speakerDir, vocabularyFile, settingsFile,
-  rootDir, dayStamp, timeStamp, dayFolder, loadSettings, saveSettings, languages, languageCode,
+  rootDir, cloudSyncWarning, dayStamp, timeStamp, dayFolder, loadSettings, saveSettings, languages, languageCode,
 };

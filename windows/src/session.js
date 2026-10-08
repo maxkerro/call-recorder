@@ -59,6 +59,7 @@ class Session {
       settings: this.settings,
       languages: config.languages,
       whisperHint: this.whisperHint(),
+      syncWarning: config.cloudSyncWarning(),
       rootDir: config.rootDir(),
     };
   }
@@ -70,7 +71,8 @@ class Session {
   }
 
   setSetting(key, value) {
-    if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls'].includes(key)) return;
+    if (!['language', 'verifyAfterLive', 'identifySpeakers', 'summarizeCalls', 'offlineMode'].includes(key)) return;
+    if (key === 'language' && !config.languages.some((l) => l.id === value)) return;
     this.settings[key] = value;
     config.saveSettings(this.settings);
     this.hooks.changed(this.snapshot());
