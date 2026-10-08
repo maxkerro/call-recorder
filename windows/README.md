@@ -49,7 +49,7 @@ If `setup-whisper.ps1` cannot find a whisper.cpp Windows build, download one fro
   and needs no extra permission. It includes every sound your PC plays, not only the call. The window shows how many
   seconds of call audio and microphone were captured, so a silent track is easy to spot.
 - **Hotkeys:** if another app already owns Shift+Alt+R / Shift+Alt+T the app says so; the buttons still work.
-  (On a German keyboard Ctrl+Alt is "AltGr"; these two combinations are unused there.)
+  (On Windows, Alt+Shift is also the default shortcut for switching keyboard layout, which matters with English, Russian and German layouts installed. If the layout flips when you press a hotkey, turn that shortcut off in Settings → Time & language → Typing → Advanced keyboard settings → Input language hot keys.)
 - **Speaker recognition** downloads two small models from GitHub the first time (about 30 MB) and runs on the CPU.
   Speakers are matched only within one recording; no voice profiles are stored.
 - There is no Apple-speech fallback on Windows: Whisper is the only engine.
