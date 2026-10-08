@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CallRecorder</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>CallRecorder</h1>
+  <span id="rec" class="rec hidden">● <span id="elapsed">00:00</span></span>
+</header>
+
+<button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Ctrl+Alt+R</kbd></button>
+<button id="btnLive" class="big"><span id="lblLive">Record + live transcript</span><kbd>Ctrl+Alt+L</kbd></button>
+
+<label class="row">Language
+  <select id="language"></select>
+</label>
+<label class="check"><input type="checkbox" id="verifyAfterLive"> Check transcript after live recording</label>
+<label class="check"><input type="checkbox" id="identifySpeakers"> Recognize speakers (Speaker 1, 2…)</label>
+<label class="check"><input type="checkbox" id="summarizeCalls"> Summarize each call (local Ollama)</label>
+
+<p id="hint" class="hint hidden"></p>
+<p id="levels" class="note hidden"></p>
+
+<section id="transcriptBox" class="hidden">
+  <div id="transcript"></div>
+</section>
+
+<div id="renameBox" class="row hidden">
+  <select id="renameWho"></select>
+  <input id="renameTo" type="text" placeholder="Name, e.g. Anna">
+  <button id="btnRename">Rename speaker</button>
+</div>
+
+<section id="summaryBox" class="hidden">
+  <h2>Summary</h2>
+  <div id="summaryText"></div>
+  <p id="summaryNote" class="note"></p>
+  <div class="row">
+    <button id="btnCopySummary" class="hidden">Copy summary</button>
+    <button id="btnCopyClaude">Copy for Claude</button>
+  </div>
+</section>
+
+<hr>
+<div class="row buttons">
+  <button id="btnFile">Transcribe file…</button>
+  <button id="btnFolder">Open folder</button>
+  <button id="btnVocab">Vocabulary…</button>
+  <span class="spacer"></span>
+  <button id="btnQuit">Quit</button>
+</div>
+<p id="status" class="note"></p>
+<p id="checkNote" class="note"></p>
+
+<script src="capture.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

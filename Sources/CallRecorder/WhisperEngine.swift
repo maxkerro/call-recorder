@@ -261,10 +261,12 @@ enum WhisperEngine {
             guard let m = re.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) else { continue }
             let h = Double(ns.substring(with: m.range(at: 1))) ?? 0
             let mi = Double(ns.substring(with: m.range(at: 2))) ?? 0
-            let s = Double(ns.substring(with: m.range(at: 3))) ?? 0
+            let s = (Double(ns.substring(with: m.range(at: 3))) ?? 0)
+                  + (Double("0." + ns.substring(with: m.range(at: 4))) ?? 0)
             let eh = Double(ns.substring(with: m.range(at: 5))) ?? 0
             let em = Double(ns.substring(with: m.range(at: 6))) ?? 0
-            let es = Double(ns.substring(with: m.range(at: 7))) ?? 0
+            let es = (Double(ns.substring(with: m.range(at: 7))) ?? 0)
+                   + (Double("0." + ns.substring(with: m.range(at: 8))) ?? 0)
             let raw = ns.substring(with: m.range(at: 9)).trimmingCharacters(in: .whitespaces)
             let text = stripPromptEcho(scrub(raw, blocklist: blocked), seq: seq)
             if isNoise(text) { continue }

@@ -1,0 +1,4 @@
+node_modules/
+dist/
+live-debug.log
+package-lock.json.bak
