@@ -86,9 +86,9 @@ function showWindow() {
 function registerHotKeys() {
   const failed = [];
   const reg = (accel, fn) => { try { if (!globalShortcut.register(accel, fn)) failed.push(accel); } catch { failed.push(accel); } };
-  reg('Control+Alt+R', () => session.toggle(false));
-  reg('Control+Alt+T', () => session.toggle(true));
-  reg('Control+Alt+S', () => session.takeScreenshot());
+  reg('Shift+Alt+R', () => session.toggle(false));
+  reg('Shift+Alt+T', () => session.toggle(true));
+  reg('Shift+Alt+S', () => session.takeScreenshot());
   if (failed.length) session.set({ status: `Hotkey already used by another app: ${failed.join(', ')}. Use the buttons instead.` });
 }
 
@@ -97,9 +97,9 @@ function buildTray() {
   tray.setToolTip('CallRecorder');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show CallRecorder', click: showWindow },
-    { label: 'Record / stop   (Ctrl+Alt+R)', click: () => session.toggle(false) },
-    { label: 'Record + live / stop   (Ctrl+Alt+T)', click: () => session.toggle(true) },
-    { label: 'Screenshot into summary   (Ctrl+Alt+S)', click: () => session.takeScreenshot() },
+    { label: 'Record / stop   (Shift+Alt+R)', click: () => session.toggle(false) },
+    { label: 'Record + live / stop   (Shift+Alt+T)', click: () => session.toggle(true) },
+    { label: 'Screenshot into summary   (Shift+Alt+S)', click: () => session.takeScreenshot() },
     { type: 'separator' },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]));

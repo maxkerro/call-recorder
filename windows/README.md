@@ -5,10 +5,10 @@ Same app as the Mac version, built with Electron so it runs on Windows 10/11 (64
 
 | Step | How |
 |------|-----|
-| 1. Record to MP3 | **Ctrl+Alt+R** or the button. Press again to stop. The MP3 is then transcribed automatically. |
+| 1. Record to MP3 | **Shift+Alt+R** or the button. Press again to stop. The MP3 is then transcribed automatically. |
 | 2. Transcribe an MP3 | **Transcribe file…**. A `.txt` is saved next to the file. |
-| 3. Live transcript + MP3 | **Ctrl+Alt+T**. Live "Them" / "Me" lines; the accurate re-check runs after you stop. |
-| 4. Screenshot into the summary | **Ctrl+Alt+S** or the button, while recording. |
+| 3. Live transcript + MP3 | **Shift+Alt+T**. Live "Them" / "Me" lines; the accurate re-check runs after you stop. |
+| 4. Screenshot into the summary | **Shift+Alt+S** or the button, while recording. |
 
 Also, like on the Mac: speaker recognition (**Speaker 1, 2…** for the call audio, "Me" for your microphone; word-level
 matching; **Rename speaker** replaces a label with a name), language picker (English, Deutsch, Русский, auto-detect),
@@ -48,7 +48,7 @@ If `setup-whisper.ps1` cannot find a whisper.cpp Windows build, download one fro
 - **Call audio** is captured from your default output device ("loopback"), so it works with speakers and headphones
   and needs no extra permission. It includes every sound your PC plays, not only the call. The window shows how many
   seconds of call audio and microphone were captured, so a silent track is easy to spot.
-- **Hotkeys:** if another app already owns Ctrl+Alt+R / Ctrl+Alt+T the app says so; the buttons still work.
+- **Hotkeys:** if another app already owns Shift+Alt+R / Shift+Alt+T the app says so; the buttons still work.
   (On a German keyboard Ctrl+Alt is "AltGr"; these two combinations are unused there.)
 - **Speaker recognition** downloads two small models from GitHub the first time (about 30 MB) and runs on the CPU.
   Speakers are matched only within one recording; no voice profiles are stored.
@@ -74,7 +74,7 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
 - **Save to:** → **Choose…** sets another recordings folder (a subfolder per day is created inside); **Default** restores
   `%USERPROFILE%\CallRecordings`. Cloud-synced-looking folders are flagged.
 - **Topic:** type what the call is about; the summary is organised around it and the topic is printed at the top of `<name>.summary.md`.
-- **Screenshots:** during a recording press **Ctrl+Alt+S**. The screen under the mouse is saved in `<name>_screens\`; after
+- **Screenshots:** during a recording press **Shift+Alt+S**. The screen under the mouse is saved in `<name>_screens\`; after
   the call a local Ollama vision model (`ollama pull qwen2.5vl:7b`) describes each image and the text joins the transcript as
   `[mm:ss] [Screen] …` lines for the summary. Images go to 127.0.0.1 only.
 - "Thank you"/"Danke"/"Спасибо" that Whisper invents on keyboard noise are dropped when the audio under them is that quiet.

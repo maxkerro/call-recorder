@@ -29,10 +29,10 @@ The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec"
 
 | Step | How |
 |------|-----|
-| 1. Record to MP3 | **⌃⌥R** (Control+Option+R) or the menu-bar button. Press again to stop. |
+| 1. Record to MP3 | **⇧⌥R** (Shift+Option+R) or the menu-bar button. Press again to stop. |
 | 2. Transcribe an MP3 | Menu → **Transcribe file…** → pick the file. A `.txt` is saved next to it. |
-| 3. Live transcript + MP3 | **⌃⌥T**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
-| 4. Screenshot into the summary | **⌃⌥S** or the button, while recording. See "Screenshots" below. |
+| 3. Live transcript + MP3 | **⇧⌥T**. Shows "Me" / "Them" lines live; `.txt` and `.mp3` saved on stop. |
+| 4. Screenshot into the summary | **⇧⌥S** or the button, while recording. See "Screenshots" below. |
 
 Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy-MM-dd>/` (one subfolder per day; git-ignored; falls back to `~/Documents/CallRecordings/` if that folder cannot be created). Pick the language (English, Deutsch, Русский) in the menu before recording.
 **Save to:** → **Choose…** picks another folder for recordings (a subfolder per day is created inside it); **Default** goes back to the folder above. A folder that looks cloud-synced (iCloud, Dropbox, OneDrive…) gets a warning, because your calls would be uploaded.
@@ -49,7 +49,7 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
 - Two transcription engines (menu → Engine): **Whisper** (local whisper.cpp, default once set up; very good
   for English, German and Russian, plus "Auto-detect" for mixed-language calls) and **Apple** (built-in,
   no setup, weaker).
-- **Live mode (⌃⌥T)** keeps the Whisper model loaded in a small local `whisper-server` and re-reads the last
+- **Live mode (⇧⌥T)** keeps the Whisper model loaded in a small local `whisper-server` and re-reads the last
   seconds of audio every second. Grey text is tentative and gets rewritten; a word becomes final only when two
   passes agree, and the last word of a pass is never final yet, so a word split across two moments is corrected
   with its second half instead of staying wrong. A pause of ~1 s ends a line. The model needs a moment to load
@@ -86,7 +86,7 @@ Files go to `/Users/mmasliukov/Private/claude/call-recorder/CallRecordings/<yyyy
   Claude chat. Turn it off with the "Summarize each call" checkbox.
 - **Topic:** type what the call is about into the *Topic* field before (or during) the call. The summary is then organised
   around it, with off-topic items mentioned briefly, and the topic is printed at the top of `<name>.summary.md`.
-- **Screenshots:** while recording, press **⌃⌥S** (or the button) when someone shares a slide or a picture. The screen under your
+- **Screenshots:** while recording, press **⇧⌥S** (or the button) when someone shares a slide or a picture. The screen under your
   mouse is saved in `<name>_screens/` next to the recording. After the call a local vision model in Ollama describes each
   image (`ollama pull qwen2.5vl:7b`; llama3.2-vision, gemma3 and llava also work), the descriptions are added to the transcript as
   `[mm:ss] [Screen] …` lines (also saved as `<name>.screens.txt`) and used in the summary. Without a vision model the images are

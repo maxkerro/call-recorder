@@ -168,7 +168,7 @@ final class AppState: ObservableObject {
     private var appleLocale: String { localeID == "auto" ? "en-US" : localeID }
 
     func registerHotKeys() {
-        let mods = controlKey | optionKey
+        let mods = shiftKey | optionKey
         HotKeys.shared.register(id: 1, keyCode: kVK_ANSI_R, modifiers: mods) { [weak self] in
             self?.toggle(live: false)
         }

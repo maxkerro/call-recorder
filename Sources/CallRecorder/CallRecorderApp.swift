@@ -79,7 +79,7 @@ struct MenuView: View {
                 Label(state.isRecording && !state.liveMode ? "Stop recording" : "Record to MP3",
                       systemImage: state.isRecording && !state.liveMode ? "stop.fill" : "record.circle")
                     .frame(maxWidth: .infinity)
-                Text("⌃⌥R").foregroundStyle(.secondary)
+                Text("⇧⌥R").foregroundStyle(.secondary)
             }
             .controlSize(.large)
             .disabled(state.busy || (state.isRecording && state.liveMode))
@@ -90,7 +90,7 @@ struct MenuView: View {
                 Label(state.isRecording && state.liveMode ? "Stop" : "Record + live transcript",
                       systemImage: state.isRecording && state.liveMode ? "stop.fill" : "text.bubble")
                     .frame(maxWidth: .infinity)
-                Text("⌃⌥T").foregroundStyle(.secondary)
+                Text("⇧⌥T").foregroundStyle(.secondary)
             }
             .controlSize(.large)
             .disabled(state.busy || (state.isRecording && !state.liveMode))
@@ -101,7 +101,7 @@ struct MenuView: View {
                 Label(state.shotCount > 0 ? "Screenshot into summary (\(state.shotCount))" : "Screenshot into summary",
                       systemImage: "camera.viewfinder")
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text("⌃⌥S").foregroundStyle(.secondary)
+                Text("⇧⌥S").foregroundStyle(.secondary)
             }
             .controlSize(.large)
             .disabled(!state.isRecording)
