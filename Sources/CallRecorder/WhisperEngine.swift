@@ -231,14 +231,19 @@ final class ChunkTranscriber: LiveSink {
         lock.unlock()
     }
 
-    func finish() async {
+    /// Synchronous on purpose: NSLock must not be used from async contexts.
+    private func flushRemainder() {
         lock.lock()
+        defer { lock.unlock() }
         if samples.count >= 16000 {     // at least one second left over
             submit(samples, offsetSamples: handedOff)
             handedOff += samples.count
         }
         samples.removeAll()
-        lock.unlock()
+    }
+
+    func finish() async {
+        flushRemainder()
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
             pending.notify(queue: .global()) { c.resume() }
         }
