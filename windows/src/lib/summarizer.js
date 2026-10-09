@@ -66,13 +66,13 @@ function split(textIn, limit) {
   return out;
 }
 
-async function generate(base, model, prompt, options = {}) {
+async function generate(base, model, prompt, options = {}, timeoutMs = 600000) {
   assertLoopback(base);
   const r = await fetch(`${base}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, prompt, stream: false, options: { num_ctx: 16384, temperature: 0.2, ...options } }),
-    signal: AbortSignal.timeout(600000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const j = await r.json().catch(() => ({}));
   if (j.error) throw new SummaryError(`Ollama: ${j.error}`);

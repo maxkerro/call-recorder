@@ -87,11 +87,11 @@ final class AppState: ObservableObject {
         Task { await runTranslation() }
     }
 
-    /// One worker translates the lines that are missing, oldest first. New lines are picked up by the same loop,
+    /// One worker translates the lines that are missing, newest first (the live end stays current). New lines are picked up by the same loop,
     /// so a stream of new text never restarts or starves it.
     private func runTranslation() async {
         try? await Task.sleep(nanoseconds: 900_000_000)          // let a growing line settle
-        while translationOpen, let next = pendingTranslations().first {
+        while translationOpen, let next = pendingTranslations().last {
             let key = translationKey(next.body)
             let target = translateTo
             do {

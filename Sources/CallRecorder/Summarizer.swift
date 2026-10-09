@@ -53,6 +53,14 @@ enum Summarizer {
         }
     }
 
+    /// Live translation needs speed: prefer small models, the big one only if nothing else is installed.
+    static func pickFastModel(_ installed: [String]) -> String? {
+        for p in ["qwen2.5:7b", "llama3.1:8b", "llama3.2:3b", "gemma2:9b", "mistral:7b"] {
+            if let m = installed.first(where: { $0 == p || $0.hasPrefix(p + "-") }) { return m }
+        }
+        return pickModel(installed)
+    }
+
     static func pickModel(_ installed: [String]) -> String? {
         for p in preferred { if let m = installed.first(where: { $0 == p || $0.hasPrefix(p + "-") }) { return m } }
         return installed.first(where: { !$0.contains("embed") })
@@ -115,10 +123,10 @@ enum Summarizer {
         return out
     }
 
-    static func generate(model: String, prompt: String, options: [String: Any] = [:]) async throws -> String {
+    static func generate(model: String, prompt: String, options: [String: Any] = [:], timeout: TimeInterval = 600) async throws -> String {
         var req = URLRequest(url: base.appendingPathComponent("api/generate"))
         req.httpMethod = "POST"
-        req.timeoutInterval = 600
+        req.timeoutInterval = timeout
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false,
                                    "options": ["num_ctx": 16384, "temperature": 0.2].merging(options) { _, new in new }]

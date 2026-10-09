@@ -35,8 +35,8 @@ enum Translator {
 
     static func translate(_ text: String, target: String, context: String) async throws -> String {
         let installed = try await Summarizer.installedModels()
-        guard let model = Summarizer.pickModel(installed) else { throw Summarizer.SummaryError.noModel }
+        guard let model = Summarizer.pickFastModel(installed) else { throw Summarizer.SummaryError.noModel }
         return try await Summarizer.generate(model: model, prompt: prompt(text, target: target, context: context),
-                                             options: ["num_ctx": 4096, "temperature": 0.1])
+                                             options: ["num_ctx": 4096, "temperature": 0.1], timeout: 60)
     }
 }

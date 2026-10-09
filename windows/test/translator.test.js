@@ -15,7 +15,7 @@ test('lineBody takes the spoken text out of "[mm:ss] Label: text"', () => {
   assert.strictEqual(lineBody('plain'), 'plain');
 });
 
-test('nothing is translated while disabled; once enabled each line is translated once, in order, with context', async () => {
+test('nothing is translated while disabled; once enabled each line is translated once, newest first, with context', async () => {
   const calls = [];
   const changes = [];
   const t = new Translator({ delay: 5, translate: async (text, o) => { calls.push([text, o.target, o.context]); return `<${text}>`; }, onChange: (v) => changes.push(v) });
@@ -26,7 +26,7 @@ test('nothing is translated while disabled; once enabled each line is translated
   t.configure({ enabled: true, target: 'de' });
   t.sync(lines);
   await until(() => calls.length === 2 && changes.length >= 2);
-  assert.deepStrictEqual(calls, [['hello there', 'de', ''], ['how are you', 'de', 'hello there']]);
+  assert.deepStrictEqual(calls, [['how are you', 'de', 'hello there'], ['hello there', 'de', '']]);   // newest first
   assert.deepStrictEqual(t.view(), { 'hello there': '<hello there>', 'how are you': '<how are you>' });
   t.sync(lines.slice());                                   // same text again: cached, no new calls
   await wait(60);

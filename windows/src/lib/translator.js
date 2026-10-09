@@ -31,13 +31,21 @@ function buildPrompt(text, targetName, context) {
 
 /** Default translate function: the best installed Ollama text model. */
 let modelCache = { at: 0, name: null };
+function pickFast(installed) {
+  for (const p of ['qwen2.5:7b', 'llama3.1:8b', 'llama3.2:3b', 'gemma2:9b', 'mistral:7b']) {
+    const m = installed.find((x) => x === p || x.startsWith(p + '-'));
+    if (m) return m;
+  }
+  return summarizer.pickModel(installed);
+}
+
 async function ollamaTranslate(text, { target, context }) {
   if (!modelCache.name || Date.now() - modelCache.at > 60000) {
-    modelCache = { at: Date.now(), name: summarizer.pickModel(await summarizer.installedModels()) };
+    modelCache = { at: Date.now(), name: pickFast(await summarizer.installedModels()) };
   }
   if (!modelCache.name) throw new summarizer.SummaryError('No Ollama model installed. Run: ollama pull qwen2.5:7b');
   return summarizer.generate(summarizer.BASE, modelCache.name, buildPrompt(text, nameOf(target), context),
-    { num_ctx: 4096, temperature: 0.1 });
+    { num_ctx: 4096, temperature: 0.1 }, 60000);
 }
 
 class Translator {
@@ -101,7 +109,7 @@ class Translator {
     await new Promise((r) => setTimeout(r, this.delay));        // let a growing line settle
     for (;;) {
       if (!this.enabled) return;
-      const next = this.pending()[0];
+      const list = this.pending(); const next = list[list.length - 1];   // newest first: the live end stays current
       if (!next) return;
       const target = this.target;
       const key = this.key(next.body);
