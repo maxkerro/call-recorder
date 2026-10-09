@@ -206,6 +206,8 @@ app.whenReady().then(() => {
     }
   });
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
+  handle('forgetVoice', (e, name) => session.forgetVoice(name));
+  handle('forgetAllVoices', () => session.forgetAllVoices());
   handle('openFolder', () => shell.openPath(config.rootDir()));
   handle('openVocabulary', () => shell.openPath(text.ensureVocabularyFile()));
   handle('copy', (e, what) => {

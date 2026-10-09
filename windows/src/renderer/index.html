@@ -20,9 +20,11 @@
 </nav>
 
 <main id="page-recorder">
-  <button id="btnRec" class="big"><span id="lblRec">Record to MP3</span><kbd>Shift+Alt+R</kbd></button>
-  <button id="btnLive" class="big"><span id="lblLive">Record + live transcript</span><kbd>Shift+Alt+T</kbd></button>
-  <button id="btnShot" class="big" disabled><span>Screenshot into summary</span><kbd>Shift+Alt+S</kbd></button>
+  <div class="btnrow">
+    <button id="btnRec" class="big"><span id="lblRec">Record</span><kbd>Shift+Alt+R</kbd></button>
+    <button id="btnLive" class="big"><span id="lblLive">Record + transcript</span><kbd>Shift+Alt+T</kbd></button>
+    <button id="btnShot" class="big" disabled><span>Screenshot</span><kbd>Shift+Alt+S</kbd></button>
+  </div>
 
   <label class="row">Topic <input id="topic" type="text" maxlength="300" placeholder="Optional: what this call is about (guides the summary)"></label>
 
@@ -80,6 +82,11 @@
   </label>
   <label class="check"><input type="checkbox" id="verifyAfterLive"> Check transcript after live recording</label>
   <label class="check"><input type="checkbox" id="identifySpeakers"> Recognize speakers (Speaker 1, 2…)</label>
+  <div id="voicesBox">
+    <h3>Known voices</h3>
+    <p class="hint">Rename a speaker after a call and the app remembers the voice; next calls use the name. Voice data stays on this PC (voices.json).</p>
+    <div id="voiceList"></div>
+  </div>
   <label class="check"><input type="checkbox" id="glossaryCorrect"> Fix glossary terms in transcript (Vocabulary list, local Ollama)</label>
   <label class="check"><input type="checkbox" id="summarizeCalls"> Summarize each call (local Ollama)</label>
   <label class="check"><input type="checkbox" id="offlineMode"> Offline mode (never download anything)</label>

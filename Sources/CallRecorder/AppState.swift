@@ -273,6 +273,7 @@ final class AppState: ObservableObject {
         busy = true
         defer { busy = false }
         finalLines = []
+        callVoices = [:]
         lines = []
         openLine = [:]
         partials = [:]
@@ -487,7 +488,7 @@ final class AppState: ObservableObject {
                 var turns: [SpeakerTurn] = []
                 if identifySpeakers {
                     status = "Finding who speaks when… (the first time this downloads small speaker models)"
-                    do { turns = try await Diarizer.shared.diarize(url) }
+                    do { turns = try await Diarizer.shared.diarize(url); callVoices = await Diarizer.shared.lastVoices }
                     catch { checkNote = "Speaker recognition failed: \(error.localizedDescription)" }
                     status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
                 }
@@ -530,8 +531,16 @@ final class AppState: ObservableObject {
 
     // MARK: Speaker names
 
+    /// Voice fingerprints of the speakers in the current transcript, by label (kept in memory only).
+    private var callVoices: [String: [Float]] = [:]
+    @Published var knownVoices: [String] = VoiceBook.names
+
+    func forgetVoice(_ name: String) { VoiceBook.forget(name); knownVoices = VoiceBook.names }
+    func forgetAllVoices() { VoiceBook.forgetAll(); knownVoices = [] }
+
     /// Labels such as "Speaker 1" present in the current transcript (offered in the Rename menu).
     private func refreshSpeakers() {
+        knownVoices = VoiceBook.names
         var seen: [String] = []
         // Lines look like "[mm:ss] Label: text".
         for l in finalLines {
@@ -539,7 +548,7 @@ final class AppState: ObservableObject {
             let rest = l[l.index(after: close)...].drop(while: { $0 == " " })
             guard let colon = rest.firstIndex(of: ":") else { continue }
             let label = String(rest[rest.startIndex..<colon])
-            if label.hasPrefix("Speaker"), !seen.contains(label) { seen.append(label) }
+            if label.hasPrefix("Speaker") || callVoices[label] != nil, !seen.contains(label) { seen.append(label) }
         }
         speakerLabels = seen
     }
@@ -548,6 +557,13 @@ final class AppState: ObservableObject {
     func renameSpeaker(_ old: String, to new: String) {
         let name = new.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name != old else { return }
+        var remembered = false
+        if let voice = callVoices[old] {           // teach the app this voice: later calls name this person automatically
+            VoiceBook.learn(name: name, embedding: voice)
+            callVoices[name] = voice
+            callVoices[old] = nil
+            remembered = true
+        }
         finalLines = finalLines.map { $0.replacingOccurrences(of: "] \(old): ", with: "] \(name): ") }
         for url in transcriptFiles {          // raw and fixed copies both get the name
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
@@ -555,7 +571,7 @@ final class AppState: ObservableObject {
                 .write(to: url, atomically: true, encoding: .utf8)
         }
         refreshSpeakers()
-        status = "Renamed \(old) to \(name)"
+        status = "Renamed \(old) to \(name)" + (remembered ? " — voice remembered for the next calls" : "")
     }
 
     func promptRename(_ old: String) {
@@ -601,6 +617,7 @@ final class AppState: ObservableObject {
             checkNote = "Finding who speaks when… (the first time this downloads small speaker models)"
             do {
                 turns = try await Diarizer.shared.diarize(system)
+                callVoices = await Diarizer.shared.lastVoices
                 let names = Set(turns.map(\.speaker)).sorted()
                 diarizeNote = turns.isEmpty
                     ? " Speaker recognition found no distinct voices in the call audio."

@@ -91,3 +91,6 @@ There is no Quit button: closing the window keeps the app in the system tray; qu
 ## Live translation
 
 The "Translation" button above the transcript opens a side pane (the window widens) with a parallel translation into the chosen language. It uses local Ollama only and runs only while the pane is open.
+
+## Known voices
+Rename a speaker after a call and the app remembers the voice (stored only in `voices.json` in the support folder); later calls use the name. Settings → Known voices lists and forgets them.

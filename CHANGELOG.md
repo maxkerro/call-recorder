@@ -7,7 +7,7 @@ Version = **1.MINOR.PATCH**, counted from the git history:
 - every other commit (fixes, polish, wording, docs, hotkey/layout tweaks) raises PATCH;
 - **build** = number of commits at release.
 
-So 1.21.27 (build 49) = 21 feature commits + 27 fix/polish commits after the first one.
+So 1.22.27 (build 50) = 22 feature commits + 27 fix/polish commits after the first one.
 When you release: count again, update `Info.plist`, `Sources/CallRecorder/AppInfo.swift` and `windows/package.json`
 (+ `windows/src/lib/appinfo.js` for the build number); a test checks that they agree.
 
@@ -36,3 +36,4 @@ When you release: count again, update `Info.plist`, `Sources/CallRecorder/AppInf
 | 19 | (tabs commit) | Recorder / Settings / About tabs |
 | 20 | (transparency commit) | Window transparency slider |
 | 21 | (translation commit) | Live parallel translation pane |
+| 22 | (voices commit) | Voice profiles: named speakers are recognised in later calls |

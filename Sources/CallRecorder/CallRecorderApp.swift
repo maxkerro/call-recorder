@@ -115,38 +115,44 @@ struct MenuView: View {
     private var recorderTab: some View {
         VStack(alignment: .leading, spacing: 12) {
         Group {
-        Button {
-            state.toggle(live: false)
-        } label: {
-            Label(state.isRecording && !state.liveMode ? "Stop recording" : "Record to MP3",
-                  systemImage: state.isRecording && !state.liveMode ? "stop.fill" : "record.circle")
+        HStack(spacing: 8) {
+            Button {
+                state.toggle(live: false)
+            } label: {
+                VStack(spacing: 2) {
+                    Label(state.isRecording && !state.liveMode ? "Stop" : "Record",
+                          systemImage: state.isRecording && !state.liveMode ? "stop.fill" : "record.circle")
+                    Text("⇧⌥R").font(.caption2).foregroundStyle(.secondary)
+                }
                 .frame(maxWidth: .infinity)
-            Text("⇧⌥R").foregroundStyle(.secondary)
-        }
-        .controlSize(.large)
-        .disabled(state.busy || (state.isRecording && state.liveMode))
+            }
+            .disabled(state.busy || (state.isRecording && state.liveMode))
 
-        Button {
-            state.toggle(live: true)
-        } label: {
-            Label(state.isRecording && state.liveMode ? "Stop" : "Record + live transcript",
-                  systemImage: state.isRecording && state.liveMode ? "stop.fill" : "text.bubble")
+            Button {
+                state.toggle(live: true)
+            } label: {
+                VStack(spacing: 2) {
+                    Label(state.isRecording && state.liveMode ? "Stop" : "Record + transcript",
+                          systemImage: state.isRecording && state.liveMode ? "stop.fill" : "text.bubble")
+                    Text("⇧⌥T").font(.caption2).foregroundStyle(.secondary)
+                }
                 .frame(maxWidth: .infinity)
-            Text("⇧⌥T").foregroundStyle(.secondary)
-        }
-        .controlSize(.large)
-        .disabled(state.busy || (state.isRecording && !state.liveMode))
+            }
+            .disabled(state.busy || (state.isRecording && !state.liveMode))
 
-        Button {
-            Task { await state.takeScreenshot() }
-        } label: {
-            Label(state.shotCount > 0 ? "Screenshot into summary (\(state.shotCount))" : "Screenshot into summary",
-                  systemImage: "camera.viewfinder")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text("⇧⌥S").foregroundStyle(.secondary)
+            Button {
+                Task { await state.takeScreenshot() }
+            } label: {
+                VStack(spacing: 2) {
+                    Label(state.shotCount > 0 ? "Screenshot (\(state.shotCount))" : "Screenshot",
+                          systemImage: "camera.viewfinder")
+                    Text("⇧⌥S").font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .disabled(!state.isRecording)
         }
         .controlSize(.large)
-        .disabled(!state.isRecording)
 
         TextField("Topic of this call (optional, guides the summary)", text: $state.topic)
             .textFieldStyle(.roundedBorder)
@@ -305,6 +311,25 @@ struct MenuView: View {
 
         Toggle("Recognize speakers (Speaker 1, 2…)", isOn: $state.identifySpeakers)
             .disabled(state.isRecording)
+
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Known voices").font(.subheadline.bold())
+            Text("Rename a speaker after a call (Rename speaker) and the app remembers the voice; next calls use the name. "
+                 + "Voice data stays on this Mac (voices.json in Application Support/CallRecorder).")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if state.knownVoices.isEmpty {
+                Text("None yet").font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(state.knownVoices, id: \.self) { name in
+                    HStack {
+                        Text(name)
+                        Spacer()
+                        Button("Forget") { state.forgetVoice(name) }.controlSize(.small)
+                    }
+                }
+                Button("Forget all voices") { state.forgetAllVoices() }.controlSize(.small)
+            }
+        }
 
         Toggle("Fix glossary terms in transcript (Vocabulary list, local Ollama)", isOn: $state.glossaryCorrect)
             .disabled(state.isRecording)

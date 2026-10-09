@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const config = require('./lib/config');
 const layout = require('./lib/layout');
+const voiceBook = require('./lib/voices');
 const { Translator, languages: translationLanguages } = require('./lib/translator');
 const tools = require('./lib/tools');
 const whisper = require('./lib/whisper');
@@ -26,6 +27,7 @@ const fmtTime = (s) => {
  */
 class Session {
   constructor(hooks, deps = {}) {
+    this.callVoices = {};            // voice fingerprints of the speakers in the current transcript, by label (memory only)
     this.hooks = hooks;
     this.deps = {
       diarize: deps.diarize || ((f) => require('./lib/diarize').diarize(f)),
@@ -43,7 +45,7 @@ class Session {
     this.settings = config.loadSettings();
     this.s = {
       isRecording: false, liveMode: false, busy: false, status: 'Ready', elapsed: '00:00',
-      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [],
+      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [], knownVoices: voiceBook.names(),
       sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0, translateOpen: false, translations: {}, translateNote: '',
     };
     this.translator = new Translator({
@@ -146,7 +148,7 @@ class Session {
     try {
       this.lines = []; this.openLine = {};
       this.outDir = config.dayFolder();
-      this.summaryTranscript = ''; this.transcriptFiles = new Set(); this.shots = [];
+      this.summaryTranscript = ''; this.transcriptFiles = new Set(); this.shots = []; this.callVoices = {};
       this.set({ finalLines: [], partials: {}, liveMode: live, summaryText: '', summaryNote: '', checkNote: '',
         speakerLabels: [], sysSeconds: 0, micSeconds: 0, shotCount: 0 });
       if (live) {
@@ -371,6 +373,7 @@ class Session {
       this.set({ checkNote: 'Finding who speaks when… (the first time this downloads small speaker models)' });
       try {
         turns = await this.deps.diarize(system);
+        this.callVoices = turns.voices || {};
         const names = [...new Set(turns.map((t) => t.speaker))].sort();
         note = turns.length ? ` Speakers found: ${names.length} (${names.join(', ')}).`
           : ' Speaker recognition found no distinct voices in the call audio.';
@@ -414,7 +417,7 @@ class Session {
       let turns = [];
       if (this.settings.identifySpeakers) {
         this.set({ status: 'Finding who speaks when… (the first time this downloads small speaker models)' });
-        try { turns = await this.deps.diarize(file); }
+        try { turns = await this.deps.diarize(file); this.callVoices = turns.voices || {}; }
         catch (e) { this.set({ checkNote: `Speaker recognition failed: ${e.message || e}` }); }
       }
       this.set({ status: `Transcribing ${path.basename(file)}… (several minutes for long calls)` });
@@ -540,21 +543,30 @@ class Session {
     const seen = [];
     for (const l of this.s.finalLines) {
       const m = /^\[[^\]]*\]\s*([^:]+):/.exec(l);
-      if (m && m[1].startsWith('Speaker') && !seen.includes(m[1])) seen.push(m[1]);
+      if (m && (m[1].startsWith('Speaker') || this.callVoices[m[1]]) && !seen.includes(m[1])) seen.push(m[1]);
     }
-    this.set({ speakerLabels: seen });
+    this.set({ speakerLabels: seen, knownVoices: voiceBook.names() });
   }
+
+  forgetVoice(name) { voiceBook.forget(String(name)); this.set({ knownVoices: voiceBook.names() }); }
+  forgetAllVoices() { voiceBook.forgetAll(); this.set({ knownVoices: [] }); }
 
   renameSpeaker(oldName, newName) {
     const name = String(newName || '').trim();
     if (!name || name === oldName) return;
+    let remembered = false;
+    if (this.callVoices[oldName]) {            // teach the app this voice: later calls name this person automatically
+      try { voiceBook.learn(name, this.callVoices[oldName]); remembered = true; } catch { /* ignore */ }
+      this.callVoices[name] = this.callVoices[oldName];
+      delete this.callVoices[oldName];
+    }
     const finalLines = this.s.finalLines.map((l) => l.split(`] ${oldName}: `).join(`] ${name}: `));
     this.set({ finalLines });
     for (const f of this.transcriptFiles) {
       try { fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`] ${oldName}: `).join(`] ${name}: `)); } catch { /* ignore */ }
     }
     this.refreshSpeakers();
-    this.set({ status: `Renamed ${oldName} to ${name}` });
+    this.set({ status: `Renamed ${oldName} to ${name}${remembered ? ' — voice remembered for the next calls' : ''}` });
   }
 }
 

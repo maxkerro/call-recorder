@@ -11,6 +11,8 @@ struct SpeakerTurn {
 actor Diarizer {
     static let shared = Diarizer()
     private var manager: OfflineDiarizerManager?
+    /// Voice fingerprint (unit length) of every speaker found in the last call, by the label used in the transcript.
+    private(set) var lastVoices: [String: [Float]] = [:]
 
     /// Offline mode: FluidAudio refuses every network fetch (it only downloads its models, on first use).
     nonisolated static func setOffline(_ on: Bool) { ModelHub.offlineMode = on }
@@ -34,10 +36,23 @@ actor Diarizer {
         raw = raw.filter { (total[$0.id] ?? 0) >= 3 }
         raw.sort { $0.start < $1.start }
 
+        // Known people (named earlier by the user) are recognised by their voice; the rest become "Speaker N".
+        var clusters: [String: [Float]] = [:]
+        for (id, emb) in result.speakerDatabase ?? [:] where total[id] != nil && (total[id] ?? 0) >= 3 {
+            clusters[id] = VoiceBook.normalized(emb)
+        }
+        let known = VoiceBook.match(clusters, profiles: VoiceBook.load())
+
         var names: [String: String] = [:]
-        return raw.map { r in
-            if names[r.id] == nil { names[r.id] = "Speaker \(names.count + 1)" }
+        var unknown = 0
+        lastVoices = [:]
+        let turns: [SpeakerTurn] = raw.map { r in
+            if names[r.id] == nil {
+                if let n = known[r.id] { names[r.id] = n } else { unknown += 1; names[r.id] = "Speaker \(unknown)" }
+                if let emb = clusters[r.id] { lastVoices[names[r.id]!] = emb }
+            }
             return SpeakerTurn(speaker: names[r.id]!, start: r.start, end: r.end)
         }
+        return turns
     }
 }

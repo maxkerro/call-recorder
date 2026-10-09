@@ -293,3 +293,19 @@ test('translation pane: nothing is translated until it is opened; language is sa
   s.setTranslation(true, 'xx');                            // unknown language code is ignored
   assert.strictEqual(config.loadSettings().translateTo, 'de');
 });
+
+test('renaming a speaker remembers the voice; the known voices list can be edited', async () => {
+  const voices = require('../src/lib/voices');
+  voices.forgetAll();
+  const turns = [{ speaker: 'Speaker 1', start: 0, end: 2 }, { speaker: 'Speaker 2', start: 2, end: 4 }];
+  turns.voices = { 'Speaker 1': [1, 0, 0], 'Speaker 2': [0, 1, 0] };
+  const { s } = makeSession({ diarize: async () => turns });
+  await s.toggle(false); feed(s, 4); await s.toggle(false);
+  assert.ok(s.s.speakerLabels.includes('Speaker 1'));
+  s.renameSpeaker('Speaker 1', 'Anna');
+  assert.deepStrictEqual(s.s.knownVoices, ['Anna']);
+  assert.match(s.s.status, /voice remembered/);
+  assert.ok(s.s.speakerLabels.includes('Anna'));             // a recognised name can still be corrected
+  s.forgetVoice('Anna');
+  assert.deepStrictEqual(s.s.knownVoices, []);
+});

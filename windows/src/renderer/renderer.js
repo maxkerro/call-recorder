@@ -11,14 +11,14 @@ function render(s) {
   setText($('elapsed'), s.elapsed);
 
   $('btnRec').classList.toggle('on', s.isRecording && !live);
-  setText($('lblRec'), s.isRecording && !live ? 'Stop recording' : 'Record to MP3');
+  setText($('lblRec'), s.isRecording && !live ? 'Stop' : 'Record');
   $('btnRec').disabled = s.busy || (s.isRecording && live);
   $('btnLive').classList.toggle('on', s.isRecording && live);
-  setText($('lblLive'), s.isRecording && live ? 'Stop' : 'Record + live transcript');
+  setText($('lblLive'), s.isRecording && live ? 'Stop' : 'Record + transcript');
   $('btnLive').disabled = s.busy || (s.isRecording && !live);
 
   $('btnShot').disabled = !s.isRecording;
-  setText($('btnShot').firstElementChild, s.shotCount ? `Screenshot into summary (${s.shotCount})` : 'Screenshot into summary');
+  setText($('btnShot').firstElementChild, s.shotCount ? `Screenshot (${s.shotCount})` : 'Screenshot');
   if (document.activeElement !== $('topic') && $('topic').value !== s.topic) $('topic').value = s.topic;
   $('topic').disabled = false;
   setText($('folderPath'), s.settings.outputRoot || s.rootDir);
@@ -91,6 +91,23 @@ function render(s) {
     who.dataset.names = names.join('|');
     who.textContent = '';
     for (const n of names) who.add(new Option(n, n));
+  }
+
+  const voiceKey = (s.knownVoices || []).join('|');
+  const vl = $('voiceList');
+  if (vl.dataset.v !== voiceKey) {
+    vl.dataset.v = voiceKey;
+    vl.textContent = '';
+    if (!s.knownVoices.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'None yet'; vl.appendChild(p); }
+    for (const n of s.knownVoices) {
+      const row = document.createElement('div'); row.className = 'voice';
+      const label = document.createElement('span'); label.textContent = n;
+      const b = document.createElement('button'); b.textContent = 'Forget'; b.onclick = () => window.api.forgetVoice(n);
+      row.append(label, b); vl.appendChild(row);
+    }
+    if (s.knownVoices.length > 1) {
+      const all = document.createElement('button'); all.textContent = 'Forget all voices'; all.onclick = () => window.api.forgetAllVoices(); vl.appendChild(all);
+    }
   }
 
   show($('summaryBox'), !!(s.summaryText || s.summaryNote));

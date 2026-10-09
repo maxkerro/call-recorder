@@ -40,3 +40,8 @@ dl.about dt { color: var(--muted); } dl.about dd { margin: 0; }
 #transcript.two p { margin: 0 0 6px; }
 #transcript p.tr { border-left: 2px solid var(--accent); padding-left: 10px; }
 #transcript p.tr.wait { color: var(--muted); border-left-color: transparent; }
+
+.voice { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
+#voicesBox h3 { margin: 12px 0 4px; font-size: 14px; }
+.btnrow { display: flex; gap: 8px; margin-bottom: 8px; }
+.btnrow button.big { flex: 1; flex-direction: column; justify-content: center; gap: 2px; height: auto; min-height: 50px; padding: 6px 8px; margin: 0; font-size: 14px; min-width: 0; }

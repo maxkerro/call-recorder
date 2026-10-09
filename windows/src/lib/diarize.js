@@ -9,6 +9,7 @@ const net = require('./net');
 const { Worker } = require('worker_threads');
 const { speakerDir } = require('./config');
 const tools = require('./tools');
+const voiceBook = require('./voices');
 
 const SEG_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2';
 const EMB_URL = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34.onnx';
@@ -73,30 +74,40 @@ async function decode(file) {
 }
 
 /** Names speakers "Speaker 1", "Speaker 2"… in order of first appearance; drops "speakers" under 3 s in total. */
-function nameSpeakers(raw) {
+function nameSpeakers(raw, voices = {}, profiles = []) {
   const total = new Map();
   for (const r of raw) total.set(r.speaker, (total.get(r.speaker) || 0) + (r.end - r.start));
   const kept = raw.filter((r) => (total.get(r.speaker) || 0) >= 3).sort((a, b) => a.start - b.start);
-  const names = new Map();
-  return kept.map((r) => {
-    if (!names.has(r.speaker)) names.set(r.speaker, `Speaker ${names.size + 1}`);
+  // Known people (named earlier by the user) are recognised by their voice; the rest become "Speaker N".
+  const clusters = {};
+  for (const [id, emb] of Object.entries(voices)) if ((total.get(id) || 0) >= 3) clusters[id] = emb;
+  const known = profiles.length ? voiceBook.match(clusters, profiles) : {};
+  const names = new Map(); let unknown = 0;
+  const found = {};
+  const turns = kept.map((r) => {
+    if (!names.has(r.speaker)) {
+      names.set(r.speaker, known[r.speaker] || `Speaker ${++unknown}`);
+      if (clusters[r.speaker]) found[names.get(r.speaker)] = voiceBook.normalize(Array.from(clusters[r.speaker]));
+    }
     return { speaker: names.get(r.speaker), start: r.start, end: r.end };
   });
+  turns.voices = found;                       // voice fingerprints by label, for "rename = remember this voice"
+  return turns;
 }
 
 /** Resolves [{speaker, start, end}]. */
 async function diarize(file) {
   await ensureModels();
   const samples = await decode(file);
-  const raw = await new Promise((resolve, reject) => {
+  const result = await new Promise((resolve, reject) => {
     const w = new Worker(path.join(__dirname, 'diarize-worker.js'), {
       workerData: { seg: SEG_MODEL, emb: EMB_MODEL, samples },
     });
-    w.once('message', (m) => (m.error ? reject(new Error(m.error)) : resolve(m.segments)));
+    w.once('message', (m) => (m.error ? reject(new Error(m.error)) : resolve(m)));
     w.once('error', reject);
     w.once('exit', (c) => { if (c !== 0) reject(new Error(`speaker worker exited with code ${c}`)); });
   });
-  return nameSpeakers(raw);
+  return nameSpeakers(result.segments, result.voices || {}, voiceBook.load());
 }
 
 module.exports = { diarize, nameSpeakers, ensureModels, decode, sha256 };

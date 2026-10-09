@@ -122,3 +122,5 @@ Pick the language (English, Deutsch, Русский) in the menu before recordin
   remove the old entry in Privacy settings and add the app again.
 - Wearing headphones avoids the other side leaking into your mic track.
 - **Privacy:** everything runs on your Mac; see [`SECURITY.md`](SECURITY.md) for the data flow, the review findings and how to verify (`./check-network.sh`, the **Offline mode** checkbox).
+
+**Known voices:** after a call, use "Rename speaker" (Speaker 1 → a name). The app remembers that voice (a speaker embedding, stored only in `voices.json` in Application Support/CallRecorder, owner-only) and names that person in later calls. A match must be clear (similarity above a threshold and ahead of the next person); otherwise the speaker stays "Speaker N". Renaming a recognised name corrects/refines it. Settings → Known voices lists and forgets them. Works on the call-audio track (people on the other end), not on your own microphone ("Me").

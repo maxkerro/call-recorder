@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   resetFolder: () => ipcRenderer.invoke('resetFolder'),
   setTranslation: (open, target) => ipcRenderer.invoke('setTranslation', open, target),
   rename: (a, b) => ipcRenderer.invoke('rename', a, b),
+  forgetVoice: (n) => ipcRenderer.invoke('forgetVoice', n),
+  forgetAllVoices: () => ipcRenderer.invoke('forgetAllVoices'),
   openFolder: () => ipcRenderer.invoke('openFolder'),
   openVocabulary: () => ipcRenderer.invoke('openVocabulary'),
   copy: (what) => ipcRenderer.invoke('copy', what),
