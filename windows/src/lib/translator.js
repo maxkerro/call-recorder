@@ -24,7 +24,7 @@ function lineBody(line) {
 function buildPrompt(text, targetName, context) {
   return `You are a live interpreter. Translate the transcript line below into ${targetName}. ` +
     `Keep names, product names, abbreviations and numbers. Do not explain, do not add anything. ` +
-    `Answer with the translation only.\n` +
+    `Answer with the translation only, written only in ${targetName}.\n` +
     (context ? `\nPrevious line, for context only (do not translate it): ${context}\n` : '') +
     `\nLine to translate:\n${text}`;
 }
@@ -44,8 +44,21 @@ async function ollamaTranslate(text, { target, context }) {
     modelCache = { at: Date.now(), name: pickFast(await summarizer.installedModels()) };
   }
   if (!modelCache.name) throw new summarizer.SummaryError('No Ollama model installed. Run: ollama pull qwen2.5:7b');
-  return summarizer.generate(summarizer.BASE, modelCache.name, buildPrompt(text, nameOf(target), context),
-    { num_ctx: 4096, temperature: 0.1 }, 60000);
+  // Some models slip into Chinese. Unless Chinese/Japanese/Korean was asked for, such an answer is rejected and retried.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let p = buildPrompt(text, nameOf(target), context);
+    if (attempt) p += `\n\nIMPORTANT: write only in ${nameOf(target)}. No Chinese characters.`;
+    const out = await summarizer.generate(summarizer.BASE, modelCache.name, p,
+      { num_ctx: 4096, temperature: attempt ? 0.4 : 0.1 }, 60000);
+    if (!strayScript(out, target)) return out;
+  }
+  throw new summarizer.SummaryError('The model answered in the wrong script; line skipped.');
+}
+
+/** True if the answer has CJK characters although the target language is not Chinese, Japanese or Korean. */
+function strayScript(s, target) {
+  if (['zh', 'ja', 'ko'].includes(target)) return false;
+  return /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/.test(s);
 }
 
 class Translator {
@@ -130,4 +143,4 @@ class Translator {
   }
 }
 
-module.exports = { Translator, languages, lineBody, buildPrompt, nameOf };
+module.exports = { strayScript, Translator, languages, lineBody, buildPrompt, nameOf };

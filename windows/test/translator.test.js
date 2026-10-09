@@ -67,3 +67,10 @@ test('the prompt names the language, forbids commentary and shows context separa
   assert.match(p, /into English/); assert.match(p, /translation only/); assert.match(p, /Previous line, for context only[^\n]*Das Release/);
   assert.ok(p.endsWith('Wir liefern am Freitag.'));
 });
+
+test('strayScript flags Chinese in a Russian answer but allows it when Chinese was asked for', () => {
+  const { strayScript } = require('../src/lib/translator');
+  assert.strictEqual(strayScript('Вероятно, есть сенсоры到处都是', 'ru'), true);
+  assert.strictEqual(strayScript('Вероятно, есть сенсоры', 'ru'), false);
+  assert.strictEqual(strayScript('这辆车很聪明', 'zh'), false);
+});

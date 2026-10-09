@@ -3,8 +3,8 @@ import AppKit
 /// Facts shown in the About box. Keep `version` in step with Info.plist and windows/package.json.
 enum AppInfo {
     static let name = "Call Recorder"
-    static let version = "1.21.26"
-    static let build = "48"                       // number of commits at release
+    static let version = "1.21.27"
+    static let build = "49"                       // number of commits at release
     static let releaseDate = "8 October 2026"
     static let author = "Maksim Masliukov"
     static let summary = """
