@@ -46,7 +46,7 @@ function dayFolder(root = rootDir(), d = new Date()) {
   return dir;
 }
 
-const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, offlineMode: false, glossaryCorrect: true, windowOpacity: 1, outputRoot: '' };
+const defaults = { language: 'en-US', verifyAfterLive: true, identifySpeakers: true, summarizeCalls: true, offlineMode: false, glossaryCorrect: true, windowOpacity: 1, translateTo: 'ru', outputRoot: '' };
 
 /** A warning when the recordings folder looks like it is synced to a cloud service. */
 function cloudSyncWarning(dir = rootDir()) {

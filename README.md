@@ -26,6 +26,8 @@ mv "CallRecorder.app" /Applications && open "/Applications/CallRecorder.app"
 
 The window has three tabs: **Recorder** (record, screenshot, topic, transcript, summary, and a slider for the window's transparency), **Settings** (recordings folder, language, engine and the checkboxes) and **About** (version, release date, author).
 
+**Live translation:** the "Translation ◂" button above the transcript opens a pane on the right (the window widens) with a parallel translation into the language chosen in the drop-down (15 languages). It uses the local Ollama model only, runs only while the pane is open, and nothing leaves the laptop.
+
 The app opens a window on launch, shows a red icon in the Dock, and adds a "Rec" item to the menu bar
 (it shows the elapsed time while recording). Closing the window keeps it running; the hotkeys keep working. There is no Quit button: quit with ⌘Q or from the Dock icon's menu.
 

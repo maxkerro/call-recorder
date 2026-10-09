@@ -106,7 +106,7 @@ struct MenuView: View {
         }
         .controlSize(.large)
         .padding(14)
-        .frame(width: 600)
+        .frame(width: state.translationOpen ? 1060 : 600)
         .onAppear { DispatchQueue.main.async { state.applyOpacity() } }
     }
 
@@ -169,16 +169,48 @@ struct MenuView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
 
+        HStack(spacing: 8) {
+            Text("Transcript").font(.subheadline.bold())
+            Spacer()
+            if state.translationOpen {
+                Picker("", selection: $state.translateTo) {
+                    ForEach(Translator.languages, id: \.code) { Text($0.name).tag($0.code) }
+                }
+                .labelsHidden()
+                .frame(width: 170)
+            }
+            Button(state.translationOpen ? "Translation ▸" : "Translation ◂") { state.translationOpen.toggle() }
+        }
+
+        if !state.translateNote.isEmpty {
+            Text(state.translateNote).font(.caption).foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         if !state.finalLines.isEmpty || !state.partials.isEmpty {
-            Divider()
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(state.finalLines.enumerated()), id: \.offset) { _, l in
-                            Text(l).textSelection(.enabled)
+                            HStack(alignment: .top, spacing: 14) {
+                                Text(l).textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if state.translationOpen {
+                                    let t = state.translation(for: l)
+                                    Text(t ?? "…").textSelection(.enabled)
+                                        .foregroundStyle(t == nil ? .secondary : .primary)
+                                        .padding(.leading, 10)
+                                        .overlay(alignment: .leading) { Rectangle().fill(.tint).frame(width: 2).opacity(t == nil ? 0 : 1) }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
                         }
                         ForEach(state.partials.sorted(by: { $0.key < $1.key }), id: \.key) { k, v in
-                            Text("\(k): \(v)").foregroundStyle(.secondary)
+                            HStack(alignment: .top, spacing: 14) {
+                                Text("\(k): \(v)").foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if state.translationOpen { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                            }
                         }
                         Color.clear.frame(height: 1).id("end")
                     }

@@ -39,6 +39,7 @@ let win = null;
 let tray = null;
 let quitting = false;
 let session = null;
+let translateWidth = 0;               // extra window width while the translation pane is open
 const pending = new Map();           // id -> resolver for renderer replies
 let nextId = 1;
 
@@ -196,6 +197,14 @@ app.whenReady().then(() => {
     if (!r.canceled && r.filePaths[0]) session.setSetting('outputRoot', r.filePaths[0]);
   });
   handle('resetFolder', () => session.setSetting('outputRoot', ''));
+  handle('setTranslation', (e, open, target) => {
+    session.setTranslation(open, target);
+    if (win && !win.isDestroyed()) {            // make room for the second column, give it back when closed
+      const [w, h] = win.getSize();
+      if (open && !translateWidth) { translateWidth = 460; win.setMinimumSize(560 + translateWidth, 400); win.setSize(w + translateWidth, h); }
+      if (!open && translateWidth) { win.setMinimumSize(560, 400); win.setSize(Math.max(560, w - translateWidth), h); translateWidth = 0; }
+    }
+  });
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
   handle('openFolder', () => shell.openPath(config.rootDir()));
   handle('openVocabulary', () => shell.openPath(text.ensureVocabularyFile()));

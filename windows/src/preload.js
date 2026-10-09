@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   screenshot: () => ipcRenderer.invoke('screenshot'),
   chooseFolder: () => ipcRenderer.invoke('chooseFolder'),
   resetFolder: () => ipcRenderer.invoke('resetFolder'),
+  setTranslation: (open, target) => ipcRenderer.invoke('setTranslation', open, target),
   rename: (a, b) => ipcRenderer.invoke('rename', a, b),
   openFolder: () => ipcRenderer.invoke('openFolder'),
   openVocabulary: () => ipcRenderer.invoke('openVocabulary'),

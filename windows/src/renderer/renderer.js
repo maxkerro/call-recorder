@@ -47,18 +47,38 @@ function render(s) {
   setText($('levels'), `Captured so far — call audio: ${s.sysSeconds} s, microphone: ${s.micSeconds} s` +
     (s.isRecording && s.elapsed !== '00:00' && s.sysSeconds === 0 ? '  (no call audio yet: is anything playing?)' : ''));
 
-  // Transcript: final lines, then tentative text per speaker in grey.
+  // Transcript: final lines, then tentative text per speaker in grey. With the translation pane open every line
+  // gets a second column with its translation.
+  const open = !!s.translateOpen;
+  setText($('btnTranslate'), open ? 'Translation ▸' : 'Translation ◂');
+  show($('trLang'), open);
+  const tl = $('trLang');
+  if (!tl.options.length) for (const l of s.translationLanguages) tl.add(new Option(l.name, l.code));
+  if (document.activeElement !== tl && tl.value !== s.settings.translateTo) tl.value = s.settings.translateTo;
+  show($('translateNote'), !!s.translateNote);
+  setText($('translateNote'), s.translateNote || '');
+
   const has = s.finalLines.length || Object.keys(s.partials).length;
   show($('transcriptBox'), !!has);
   const box = $('transcript');
-  const key = JSON.stringify([s.finalLines, s.partials]);
+  box.classList.toggle('two', open);
+  const key = JSON.stringify([s.finalLines, s.partials, open, open ? s.translations : 0]);
   if (box.dataset.key !== key) {
     box.dataset.key = key;
     const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
     box.textContent = '';
-    for (const l of s.finalLines) { const p = document.createElement('p'); p.textContent = l; box.appendChild(p); }
+    const cell = (cls, text) => { const p = document.createElement('p'); if (cls) p.className = cls; p.textContent = text; return p; };
+    for (const l of s.finalLines) {
+      box.appendChild(cell('', l));
+      if (open) {
+        const m = /^\[\d+:\d+\]\s+[^:\[\]]{1,40}?:\s+([\s\S]*)$/.exec(l);
+        const body = (m ? m[1] : l.replace(/^\[\d+:\d+\]\s*/, '')).trim();
+        box.appendChild(cell(s.translations[body] ? 'tr' : 'tr wait', s.translations[body] || '…'));
+      }
+    }
     for (const [k, v] of Object.entries(s.partials).sort()) {
-      const p = document.createElement('p'); p.className = 'partial'; p.textContent = `${k}: ${v}`; box.appendChild(p);
+      box.appendChild(cell('partial', `${k}: ${v}`));
+      if (open) box.appendChild(cell('', ''));
     }
     if (atEnd) box.scrollTop = box.scrollHeight;
   }
@@ -98,6 +118,8 @@ $('topic').oninput = (e) => window.api.setTopic(e.target.value);
 $('btnChoose').onclick = () => window.api.chooseFolder();
 $('btnReset').onclick = () => window.api.resetFolder();
 $('opacity').oninput = (e) => { setText($('opacityValue'), `${e.target.value}%`); window.api.setSetting('windowOpacity', e.target.value / 100); };
+$('btnTranslate').onclick = () => window.api.setTranslation(!current.translateOpen, $('trLang').value || current.settings.translateTo);
+$('trLang').onchange = (e) => window.api.setTranslation(true, e.target.value);
 $('btnFile').onclick = () => window.api.transcribeFile();
 $('btnFolder').onclick = () => window.api.openFolder();
 $('btnVocab').onclick = () => window.api.openVocabulary();

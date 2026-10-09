@@ -20,7 +20,7 @@ final class AppState: ObservableObject {
     @Published var busy = false
     @Published var status = "Ready"
     @Published var elapsed = "00:00"
-    @Published var finalLines: [String] = []
+    @Published var finalLines: [String] = [] { didSet { scheduleTranslation() } }
     @Published var partials: [String: String] = [:]
     @Published var lastFile: URL?
     @Published var localeID: String {
@@ -43,6 +43,60 @@ final class AppState: ObservableObject {
     func applyOpacity() {
         for w in NSApp.windows { w.alphaValue = CGFloat(windowOpacity) }
     }
+    // MARK: Live translation (only while the translation pane is open)
+
+    @Published var translationOpen = false { didSet { if translationOpen { scheduleTranslation() } } }
+    @Published var translateTo: String {
+        didSet { UserDefaults.standard.set(translateTo, forKey: "translateTo"); scheduleTranslation() }
+    }
+    @Published var translations: [String: String] = [:]      // "<lang>\u{1}<text>" -> translation
+    @Published var translateNote = ""
+    private var translating = false
+    private var failedAt: [String: Date] = [:]
+
+    private func translationKey(_ body: String) -> String { "\(translateTo)\u{1}\(body)" }
+
+    /// The translation of a transcript line in the selected language, if it is ready.
+    func translation(for line: String) -> String? { translations[translationKey(Translator.lineBody(line))] }
+
+    private func pendingTranslations() -> [(body: String, context: String)] {
+        var out: [(body: String, context: String)] = []
+        for (i, l) in finalLines.enumerated() {
+            let body = Translator.lineBody(l)
+            let key = translationKey(body)
+            if body.count < 2 || translations[key] != nil { continue }
+            if let t = failedAt[key], Date().timeIntervalSince(t) < 15 { continue }
+            out.append((body, i > 0 ? Translator.lineBody(finalLines[i - 1]) : ""))
+        }
+        return out
+    }
+
+    private func scheduleTranslation() {
+        guard translationOpen, !translating, !pendingTranslations().isEmpty else { return }
+        translating = true
+        Task { await runTranslation() }
+    }
+
+    /// One worker translates the lines that are missing, oldest first. New lines are picked up by the same loop,
+    /// so a stream of new text never restarts or starves it.
+    private func runTranslation() async {
+        try? await Task.sleep(nanoseconds: 900_000_000)          // let a growing line settle
+        while translationOpen, let next = pendingTranslations().first {
+            let key = translationKey(next.body)
+            let target = translateTo
+            do {
+                let out = try await Translator.translate(next.body, target: target, context: next.context)
+                if out.isEmpty { failedAt[key] = Date() } else { translations["\(target)\u{1}\(next.body)"] = out }
+                translateNote = ""
+            } catch {
+                failedAt[key] = Date()
+                translateNote = "Translation: \(error.localizedDescription)"
+            }
+            if translations.count > 5000 { translations = [:] }
+        }
+        translating = false
+    }
+
     @Published var glossaryCorrect: Bool {
         didSet { UserDefaults.standard.set(glossaryCorrect, forKey: "glossary") }
     }
@@ -161,6 +215,7 @@ final class AppState: ObservableObject {
         identifySpeakers = UserDefaults.standard.object(forKey: "speakers") as? Bool ?? true
         summarizeCalls = UserDefaults.standard.object(forKey: "summarize") as? Bool ?? true
         glossaryCorrect = UserDefaults.standard.object(forKey: "glossary") as? Bool ?? true
+        translateTo = UserDefaults.standard.string(forKey: "translateTo") ?? "ru"
         let savedOpacity = UserDefaults.standard.object(forKey: "opacity") as? Double ?? 1
         windowOpacity = min(1, max(0.3, savedOpacity))
         offlineMode = UserDefaults.standard.bool(forKey: "offline")

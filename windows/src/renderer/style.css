@@ -33,3 +33,10 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0; }
 dl.about dt { color: var(--muted); } dl.about dd { margin: 0; }
 .opacity input[type=range] { flex: 1; } .opacity span { width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.tbar { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.tlabel { font-weight: 600; }
+.tbar select { font: inherit; padding: 5px; background: var(--btn); color: inherit; border: 1px solid var(--line); border-radius: 6px; height: 38px; }
+#transcript.two { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; align-content: start; }
+#transcript.two p { margin: 0 0 6px; }
+#transcript p.tr { border-left: 2px solid var(--accent); padding-left: 10px; }
+#transcript p.tr.wait { color: var(--muted); border-left-color: transparent; }

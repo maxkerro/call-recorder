@@ -271,3 +271,25 @@ test('window transparency is clamped to 30-100 %, saved, and applied through the
   assert.deepStrictEqual(seen, [0.3, 0.65, 1]);
   assert.strictEqual(config.loadSettings().windowOpacity, 1);
 });
+
+test('translation pane: nothing is translated until it is opened; language is saved', async () => {
+  const calls = [];
+  const { s } = makeSession({ translate: async (text, o) => { calls.push(`${o.target}:${text}`); return `T(${text})`; }, translateDelay: 5 });
+  s.set({ finalLines: ['[00:01] Me: first line here'] });
+  await sleep(60);
+  assert.strictEqual(calls.length, 0);
+  s.setTranslation(true, 'de');
+  for (let i = 0; i < 100 && !s.s.translations['first line here']; i++) await sleep(10);
+  assert.strictEqual(s.s.translations['first line here'], 'T(first line here)');
+  assert.ok(s.s.translateOpen);
+  assert.strictEqual(config.loadSettings().translateTo, 'de');
+  s.set({ finalLines: ['[00:01] Me: first line here', '[00:05] Them: second one'] });
+  for (let i = 0; i < 100 && !s.s.translations['second one']; i++) await sleep(10);
+  assert.deepStrictEqual(calls, ['de:first line here', 'de:second one']);
+  s.setTranslation(false);
+  s.set({ finalLines: ['[00:01] Me: first line here', '[00:05] Them: second one', '[00:09] Me: third'] });
+  await sleep(60);
+  assert.strictEqual(calls.length, 2);                     // closed again: no more work
+  s.setTranslation(true, 'xx');                            // unknown language code is ignored
+  assert.strictEqual(config.loadSettings().translateTo, 'de');
+});

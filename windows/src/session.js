@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const config = require('./lib/config');
 const layout = require('./lib/layout');
+const { Translator, languages: translationLanguages } = require('./lib/translator');
 const tools = require('./lib/tools');
 const whisper = require('./lib/whisper');
 const text = require('./lib/text');
@@ -37,13 +38,21 @@ class Session {
       ffmpegPath: deps.ffmpegPath || tools.ffmpegPath,
       isReady: deps.isReady || tools.isReady,
       isLiveReady: deps.isLiveReady || tools.isLiveReady,
+      translate: deps.translate,
     };
     this.settings = config.loadSettings();
     this.s = {
       isRecording: false, liveMode: false, busy: false, status: 'Ready', elapsed: '00:00',
       finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [],
-      sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0,
+      sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0, translateOpen: false, translations: {}, translateNote: '',
     };
+    this.translator = new Translator({
+      translate: this.deps.translate,
+      delay: deps.translateDelay,
+      onChange: (translations) => this.set({ translations, translateNote: '' }),
+      onError: (e) => this.set({ translateNote: `Translation: ${e.message || e}` }),
+    });
+    this.translator.configure({ target: this.settings.translateTo });
     this.shots = [];
     this.lines = [];
     this.openLine = {};
@@ -62,13 +71,30 @@ class Session {
       ...this.s,
       settings: this.settings,
       languages: config.languages,
+      translationLanguages,
       whisperHint: this.whisperHint(),
       syncWarning: config.cloudSyncWarning(),
       rootDir: config.rootDir(),
     };
   }
 
-  set(patch) { Object.assign(this.s, patch); this.hooks.changed(this.snapshot()); }
+  set(patch) {
+    Object.assign(this.s, patch);
+    if ('finalLines' in patch) this.translator.sync(this.s.finalLines);
+    this.hooks.changed(this.snapshot());
+  }
+
+  /** Opens/closes the translation pane and picks its language. Nothing is translated while it is closed. */
+  setTranslation(open, target) {
+    if (target && translationLanguages.some((l) => l.code === target) && target !== this.settings.translateTo) {
+      this.settings.translateTo = target;
+      config.saveSettings(this.settings);
+      this.translator.configure({ target });
+    }
+    this.translator.configure({ enabled: !!open });
+    this.translator.sync(this.s.finalLines);
+    this.set({ translateOpen: !!open, translations: this.translator.view(this.s.finalLines), translateNote: '' });
+  }
 
   whisperHint() {
     return this.deps.isReady() ? null : 'Whisper isn\'t set up yet: run setup-whisper.ps1 (right-click, Run with PowerShell), then restart the app.';

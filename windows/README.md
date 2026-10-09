@@ -87,3 +87,7 @@ Nothing you record leaves the PC: recognition, speaker detection and summaries a
   and jargon; very common words make poor entries.
 
 There is no Quit button: closing the window keeps the app in the system tray; quit from the tray icon's menu (right-click → Quit).
+
+## Live translation
+
+The "Translation" button above the transcript opens a side pane (the window widens) with a parallel translation into the chosen language. It uses local Ollama only and runs only while the pane is open.

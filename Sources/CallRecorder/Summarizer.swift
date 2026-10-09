@@ -115,13 +115,13 @@ enum Summarizer {
         return out
     }
 
-    static func generate(model: String, prompt: String) async throws -> String {
+    static func generate(model: String, prompt: String, options: [String: Any] = [:]) async throws -> String {
         var req = URLRequest(url: base.appendingPathComponent("api/generate"))
         req.httpMethod = "POST"
         req.timeoutInterval = 600
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false,
-                                   "options": ["num_ctx": 16384, "temperature": 0.2]]
+                                   "options": ["num_ctx": 16384, "temperature": 0.2].merging(options) { _, new in new }]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
