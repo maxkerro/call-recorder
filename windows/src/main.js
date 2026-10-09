@@ -206,6 +206,17 @@ app.whenReady().then(() => {
     }
   });
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
+  handle('confirmVoice', (e, name) => session.confirmVoice(String(name)));
+  handle('addVocabulary', (e, words) => session.addVocabulary(words));
+  handle('analyzeWords', async () => {
+    if (session.s.finalLines.length) return session.analyzeWords();
+    const r = await dialog.showOpenDialog(win, {                      // no transcript on screen: pick a transcript file
+      title: 'Choose a transcript file to analyze', defaultPath: config.dayFolder(),
+      filters: [{ name: 'Transcript', extensions: ['txt', 'md'] }], properties: ['openFile'],
+    });
+    if (!r.canceled && r.filePaths[0]) session.analyzeWords(r.filePaths[0]);
+  });
+  handle('translateControl', (e, action) => session.translateControl(action));
   handle('forgetVoice', (e, name) => session.forgetVoice(name));
   handle('forgetAllVoices', () => session.forgetAllVoices());
   handle('openFolder', () => shell.openPath(config.rootDir()));

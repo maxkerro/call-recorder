@@ -124,3 +124,11 @@ Pick the language (English, Deutsch, Русский) in the menu before recordin
 - **Privacy:** everything runs on your Mac; see [`SECURITY.md`](SECURITY.md) for the data flow, the review findings and how to verify (`./check-network.sh`, the **Offline mode** checkbox).
 
 **Known voices:** after a call, use "Rename speaker" (Speaker 1 → a name). The app remembers that voice (a speaker embedding, stored only in `voices.json` in Application Support/CallRecorder, owner-only) and names that person in later calls. A match must be clear (similarity above a threshold and ahead of the next person); otherwise the speaker stays "Speaker N". Renaming a recognised name corrects/refines it. Settings → Known voices lists and forgets them. Works on the call-audio track (people on the other end), not on your own microphone ("Me").
+
+**Summaries use names:** speakers you have named (or the app recognised) are passed to the summary model as "Named participants", so decisions and action items carry names. "Me", "Them" and "Speaker N" are never given invented names.
+
+**Confirm speaker:** when the app recognised someone correctly, "Confirm speaker" refines their saved voice with that call (once per call). Renaming still corrects a wrong guess.
+
+**Analyze words:** lists the 10 most frequent words (filler words left out) and 10 "unknown" words of the transcript on screen, or of a transcript file if there is none. Unknown = names, abbreviations and terms that are not in the Vocabulary list; "+ Vocabulary" / "Add all" put them into it. Lowercase ordinary words can't be judged unknown, because there is no dictionary.
+
+**Translation controls** (pause ⏸, continue ▶, stop ⏹, restart ↻, shown while the translation pane is open): Pause lets the current line finish and waits; Stop cancels the request to Ollama and skips what was waiting (Continue then picks up from new lines); Restart clears the translation and translates everything again.

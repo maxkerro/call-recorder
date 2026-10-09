@@ -52,6 +52,11 @@ function render(s) {
   const open = !!s.translateOpen;
   setText($('btnTranslate'), open ? 'Translation ▸' : 'Translation ◂');
   show($('trLang'), open);
+  show($('trCtl'), open);
+  const ts = s.translateState || 'running';
+  $('trPause').disabled = ts !== 'running';
+  $('trContinue').disabled = ts === 'running';
+  $('trStop').disabled = ts === 'stopped';
   const tl = $('trLang');
   if (!tl.options.length) for (const l of s.translationLanguages) tl.add(new Option(l.name, l.code));
   if (document.activeElement !== tl && tl.value !== s.settings.translateTo) tl.value = s.settings.translateTo;
@@ -110,6 +115,28 @@ function render(s) {
     }
   }
 
+  const conf = s.confirmable || [];
+  show($('confirmBox'), conf.length > 0 && !s.isRecording);
+  const cw = $('confirmWho');
+  if (cw.dataset.names !== conf.join('|')) { cw.dataset.names = conf.join('|'); cw.textContent = ''; for (const n of conf) cw.add(new Option(n, n)); }
+
+  show($('wordsBox'), !!s.wordStats);
+  if (s.wordStats) {
+    setText($('wordsSource'), `(${s.wordStats.source})`);
+    const fill = (id, rows, button) => {
+      const ol = $(id); ol.textContent = '';
+      for (const r of rows) {
+        const li = document.createElement('li');
+        li.textContent = `${r.word} × ${r.count} `;
+        if (button) { const b = document.createElement('button'); b.className = 'mini'; b.textContent = '+ Vocabulary'; b.onclick = () => window.api.addVocabulary([r.word]); li.appendChild(b); }
+        ol.appendChild(li);
+      }
+      if (!rows.length) { const li = document.createElement('li'); li.textContent = '—'; ol.appendChild(li); }
+    };
+    fill('wordsTop', s.wordStats.frequent, false);
+    fill('wordsUnknown', s.wordStats.unknown, true);
+  }
+
   show($('summaryBox'), !!(s.summaryText || s.summaryNote));
   setText($('summaryText'), s.summaryText);
   setText($('summaryNote'), s.summaryNote);
@@ -130,6 +157,12 @@ $('btnRename').onclick = () => {
   const to = $('renameTo').value.trim();
   if (to) { window.api.rename($('renameWho').value, to); $('renameTo').value = ''; }
 };
+for (const [id, action] of [['trPause', 'pause'], ['trContinue', 'continue'], ['trStop', 'stop'], ['trRestart', 'restart']]) {
+  $(id).onclick = () => window.api.translateControl(action);
+}
+$('btnConfirm').onclick = () => { const n = $('confirmWho').value; if (n) window.api.confirmVoice(n); };
+$('btnWords').onclick = () => window.api.analyzeWords();
+$('btnAddAll').onclick = () => window.api.addVocabulary(current.wordStats.unknown.map((u) => u.word));
 $('btnShot').onclick = () => window.api.screenshot();
 $('topic').oninput = (e) => window.api.setTopic(e.target.value);
 $('btnChoose').onclick = () => window.api.chooseFolder();

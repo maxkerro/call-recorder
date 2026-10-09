@@ -45,3 +45,9 @@ dl.about dt { color: var(--muted); } dl.about dd { margin: 0; }
 #voicesBox h3 { margin: 12px 0 4px; font-size: 14px; }
 .btnrow { display: flex; gap: 8px; margin-bottom: 8px; }
 .btnrow button.big { flex: 1; flex-direction: column; justify-content: center; gap: 2px; height: auto; min-height: 50px; padding: 6px 8px; margin: 0; font-size: 14px; min-width: 0; }
+button.mini { height: 28px; min-width: 32px; padding: 0 8px; font-size: 13px; }
+#trCtl { display: inline-flex; gap: 4px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+#wordsBox h3 { margin: 6px 0; font-size: 13px; }
+#wordsBox ol { margin: 0; padding-left: 20px; }
+#wordsBox li { margin: 3px 0; }

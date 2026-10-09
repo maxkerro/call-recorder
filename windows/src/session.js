@@ -5,6 +5,7 @@ const path = require('path');
 const config = require('./lib/config');
 const layout = require('./lib/layout');
 const voiceBook = require('./lib/voices');
+const wordstats = require('./lib/wordstats');
 const { Translator, languages: translationLanguages } = require('./lib/translator');
 const tools = require('./lib/tools');
 const whisper = require('./lib/whisper');
@@ -27,6 +28,7 @@ const fmtTime = (s) => {
  */
 class Session {
   constructor(hooks, deps = {}) {
+    this.confirmed = new Set();      // recognised names already confirmed in this call
     this.callVoices = {};            // voice fingerprints of the speakers in the current transcript, by label (memory only)
     this.hooks = hooks;
     this.deps = {
@@ -45,8 +47,8 @@ class Session {
     this.settings = config.loadSettings();
     this.s = {
       isRecording: false, liveMode: false, busy: false, status: 'Ready', elapsed: '00:00',
-      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [], knownVoices: voiceBook.names(),
-      sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0, translateOpen: false, translations: {}, translateNote: '',
+      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [], knownVoices: voiceBook.names(), confirmable: [], wordStats: null,
+      sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0, translateOpen: false, translateState: 'running', translations: {}, translateNote: '',
     };
     this.translator = new Translator({
       translate: this.deps.translate,
@@ -84,6 +86,13 @@ class Session {
     Object.assign(this.s, patch);
     if ('finalLines' in patch) this.translator.sync(this.s.finalLines);
     this.hooks.changed(this.snapshot());
+  }
+
+  /** Pause / Continue / Stop / Restart of the live translation (the small buttons in the translation pane). */
+  translateControl(action) {
+    if (!['pause', 'continue', 'stop', 'restart'].includes(action)) return;
+    this.translator.control(action);
+    this.set({ translateState: this.translator.state, translations: this.translator.view(this.s.finalLines), translateNote: '' });
   }
 
   /** Opens/closes the translation pane and picks its language. Nothing is translated while it is closed. */
@@ -148,7 +157,7 @@ class Session {
     try {
       this.lines = []; this.openLine = {};
       this.outDir = config.dayFolder();
-      this.summaryTranscript = ''; this.transcriptFiles = new Set(); this.shots = []; this.callVoices = {};
+      this.summaryTranscript = ''; this.transcriptFiles = new Set(); this.shots = []; this.callVoices = {}; this.confirmed = new Set();
       this.set({ finalLines: [], partials: {}, liveMode: live, summaryText: '', summaryNote: '', checkNote: '',
         speakerLabels: [], sysSeconds: 0, micSeconds: 0, shotCount: 0 });
       if (live) {
@@ -545,7 +554,49 @@ class Session {
       const m = /^\[[^\]]*\]\s*([^:]+):/.exec(l);
       if (m && (m[1].startsWith('Speaker') || this.callVoices[m[1]]) && !seen.includes(m[1])) seen.push(m[1]);
     }
-    this.set({ speakerLabels: seen, knownVoices: voiceBook.names() });
+    const known = voiceBook.names();
+    const confirmable = seen.filter((n) => known.includes(n) && this.callVoices[n] && !this.confirmed.has(n));
+    this.set({ speakerLabels: seen, knownVoices: known, confirmable });
+  }
+
+  /** "Confirm": the app recognised this person correctly, so their saved voice is refined with this call. */
+  confirmVoice(name) {
+    if (!this.callVoices[name] || this.confirmed.has(name)) return;
+    try { voiceBook.learn(name, this.callVoices[name]); } catch { return; }
+    this.confirmed.add(name);
+    this.refreshSpeakers();
+    this.set({ status: `Confirmed ${name}: the voice profile was refined` });
+  }
+
+  /** The 10 most frequent words and 10 unknown words (not in the Vocabulary list) of the current transcript or a file. */
+  analyzeWords(file = null) {
+    let transcript = '';
+    let source = 'current transcript';
+    try {
+      if (file) { transcript = fs.readFileSync(file, 'utf8'); source = path.basename(file); }
+      else transcript = this.s.finalLines.join('\n');
+    } catch (e) { this.set({ status: `Could not read ${file}: ${e.message}` }); return; }
+    if (!transcript.trim()) { this.set({ status: 'Nothing to analyze: there is no transcript yet.' }); return; }
+    const vocab = text.vocabularyTerms();
+    this.set({ wordStats: { source, frequent: wordstats.topWords(transcript, 10), unknown: wordstats.unknownWords(transcript, vocab, 10) } });
+  }
+
+  /** Adds words to the Vocabulary list (skipping ones already there). Returns how many were added. */
+  addVocabulary(words) {
+    const file = text.ensureVocabularyFile();
+    const have = new Set(text.vocabularyTerms().map(text.norm));
+    const add = [];
+    for (const w of [].concat(words || []).map((x) => String(x).replace(/\s+/g, ' ').trim().slice(0, 60)).filter(Boolean)) {
+      if (have.has(text.norm(w))) continue;
+      have.add(text.norm(w)); add.push(w);
+    }
+    if (add.length) fs.appendFileSync(file, '\r\n' + add.join('\r\n') + '\r\n');
+    if (this.s.wordStats) {
+      const gone = new Set(add.map(text.norm));
+      this.set({ wordStats: { ...this.s.wordStats, unknown: this.s.wordStats.unknown.filter((u) => !gone.has(text.norm(u.word))) } });
+    }
+    this.set({ status: add.length ? `Added to the Vocabulary list: ${add.join(', ')}` : 'Those words are already in the Vocabulary list.' });
+    return add.length;
   }
 
   forgetVoice(name) { voiceBook.forget(String(name)); this.set({ knownVoices: voiceBook.names() }); }

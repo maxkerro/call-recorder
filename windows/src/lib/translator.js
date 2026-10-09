@@ -39,7 +39,7 @@ function pickFast(installed) {
   return summarizer.pickModel(installed);
 }
 
-async function ollamaTranslate(text, { target, context }) {
+async function ollamaTranslate(text, { target, context, signal }) {
   if (!modelCache.name || Date.now() - modelCache.at > 60000) {
     modelCache = { at: Date.now(), name: pickFast(await summarizer.installedModels()) };
   }
@@ -49,7 +49,7 @@ async function ollamaTranslate(text, { target, context }) {
     let p = buildPrompt(text, nameOf(target), context);
     if (attempt) p += `\n\nIMPORTANT: write only in ${nameOf(target)}. No Chinese characters.`;
     const out = await summarizer.generate(summarizer.BASE, modelCache.name, p,
-      { num_ctx: 4096, temperature: attempt ? 0.4 : 0.1 }, 60000);
+      { num_ctx: 4096, temperature: attempt ? 0.4 : 0.1 }, 60000, signal);
     if (!strayScript(out, target)) return out;
   }
   throw new summarizer.SummaryError('The model answered in the wrong script; line skipped.');
@@ -69,6 +69,9 @@ class Translator {
     this.lines = [];
     this.running = false;
     this.failedAt = new Map();           // key -> time of the last failure (retry after a while)
+    this.state = 'running';              // running | paused | stopped
+    this.skipped = new Set();            // lines left behind by Stop: not translated when translation continues
+    this.abort = new AbortController();  // cancels the request in flight (Stop, Restart, closing the pane)
     this.stale = new Map();              // target+line header ("[01:02] Them:") -> last translation of that growing line
   }
 
@@ -79,11 +82,34 @@ class Translator {
 
   configure({ enabled, target }) {
     if (target) this.target = target;
-    if (enabled !== undefined) this.enabled = !!enabled;
+    if (enabled !== undefined) {
+      this.enabled = !!enabled;
+      if (!this.enabled) this.cancel();
+    }
+  }
+
+  cancel() { this.abort.abort(); this.abort = new AbortController(); }
+
+  /** Pause / Continue / Stop / Restart. Pause lets the current line finish; Stop cancels it and skips the backlog. */
+  control(action) {
+    if (action === 'pause') { if (this.state === 'running') this.state = 'paused'; }
+    else if (action === 'continue') { this.state = 'running'; this.kick(); }
+    else if (action === 'stop') {
+      this.state = 'stopped';
+      for (const p of this.pending()) this.skipped.add(this.key(p.body));
+      this.cancel();
+    } else if (action === 'restart') {
+      this.cancel();
+      this.cache.clear(); this.stale.clear(); this.failedAt.clear(); this.skipped.clear();
+      this.state = 'running';
+      this.kick();
+    }
+    this.onChange(this.view());
   }
 
   sync(lines) {
     this.lines = lines;
+    if (this.state === 'stopped') for (const p of this.pending()) this.skipped.add(this.key(p.body));   // Continue picks up from now
     this.kick();
   }
 
@@ -103,7 +129,7 @@ class Translator {
     const out = [];
     this.lines.forEach((l, i) => {
       const body = lineBody(l);
-      if (body.length < 2 || this.cache.has(this.key(body))) return;
+      if (body.length < 2 || this.cache.has(this.key(body)) || this.skipped.has(this.key(body))) return;
       const failed = this.failedAt.get(this.key(body));
       if (failed && Date.now() - failed < 15000) return;
       out.push({ body, header: this.header(l, body), context: i > 0 ? lineBody(this.lines[i - 1]) : '' });
@@ -112,7 +138,7 @@ class Translator {
   }
 
   kick() {
-    if (!this.enabled || this.running) return;
+    if (!this.enabled || this.running || this.state !== 'running') return;
     if (!this.pending().length) return;
     this.running = true;
     this.loop().finally(() => { this.running = false; });
@@ -121,19 +147,22 @@ class Translator {
   async loop() {
     await new Promise((r) => setTimeout(r, this.delay));        // let a growing line settle
     for (;;) {
-      if (!this.enabled) return;
+      if (!this.enabled || this.state !== 'running') return;
       const list = this.pending(); const next = list[list.length - 1];   // newest first: the live end stays current
       if (!next) return;
       const target = this.target;
       const key = this.key(next.body);
+      const signal = this.abort.signal;
       try {
-        const out = await this.translate(next.body, { target, context: next.context });
+        const out = await this.translate(next.body, { target, context: next.context, signal });
+        if (signal.aborted) continue;               // stopped or restarted meanwhile: drop the answer
         if (out) {
           this.cache.set(`${target}\u0001${next.body}`, out.trim());
           this.stale.set(`${target}\u0001${next.header}`, out.trim());
         }
         else this.failedAt.set(key, Date.now());
       } catch (e) {
+        if (signal.aborted) continue;
         this.failedAt.set(key, Date.now());
         this.onError(e);
       }

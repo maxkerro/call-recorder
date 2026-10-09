@@ -309,3 +309,27 @@ test('renaming a speaker remembers the voice; the known voices list can be edite
   s.forgetVoice('Anna');
   assert.deepStrictEqual(s.s.knownVoices, []);
 });
+
+test('Confirm refines a recognised voice once; Analyze words lists frequent and unknown words; unknown words can be added to the vocabulary', async () => {
+  const voices = require('../src/lib/voices');
+  voices.forgetAll();
+  voices.learn('Anna', [1, 0, 0]);
+  const turns = [{ speaker: 'Anna', start: 0, end: 2 }, { speaker: 'Speaker 1', start: 2, end: 4 }];
+  turns.voices = { Anna: [0.9, 0.1, 0], 'Speaker 1': [0, 1, 0] };
+  const { s } = makeSession({ diarize: async () => turns });
+  await s.toggle(false); feed(s, 4); await s.toggle(false);
+  assert.deepStrictEqual(s.s.confirmable, ['Anna']);
+  s.confirmVoice('Anna');
+  assert.strictEqual(voices.load()[0].count, 2);
+  assert.deepStrictEqual(s.s.confirmable, []);
+  s.confirmVoice('Anna');                                    // a second confirm in the same call changes nothing
+  assert.strictEqual(voices.load()[0].count, 2);
+
+  s.set({ finalLines: ['[00:01] Anna: The Zorblax release is late, the release again.', '[00:09] Me: Zorblax and the HMI.'] });
+  s.analyzeWords();
+  assert.strictEqual(s.s.wordStats.frequent[0].word, 'release');
+  assert.ok(s.s.wordStats.unknown.some((u) => u.word === 'Zorblax' && u.count === 2));
+  assert.strictEqual(s.addVocabulary(['Zorblax', 'Zorblax']), 1);
+  assert.ok(fs.readFileSync(path.join(support, 'vocabulary.txt'), 'utf8').includes('Zorblax'));
+  assert.ok(!s.s.wordStats.unknown.some((u) => u.word === 'Zorblax'));
+});

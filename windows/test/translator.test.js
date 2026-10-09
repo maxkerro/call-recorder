@@ -74,3 +74,43 @@ test('strayScript flags Chinese in a Russian answer but allows it when Chinese w
   assert.strictEqual(strayScript('Вероятно, есть сенсоры', 'ru'), false);
   assert.strictEqual(strayScript('这辆车很聪明', 'zh'), false);
 });
+
+test('pause waits, continue resumes; stop cancels and skips the backlog; restart translates everything again', async () => {
+  const calls = [];
+  const t = new Translator({ delay: 5, translate: async (text, o) => { calls.push(text); return `<${text}>`; } });
+  t.configure({ enabled: true, target: 'de' });
+  t.control('pause');
+  t.sync(['[00:01] Me: first line here']);
+  await wait(60);
+  assert.strictEqual(calls.length, 0);                       // paused: nothing runs
+  t.control('continue');
+  await until(() => calls.length === 1);
+  await wait(20);
+  t.control('stop');
+  t.sync(['[00:01] Me: first line here', '[00:03] Me: second line here']);
+  await wait(60);
+  assert.strictEqual(calls.length, 1);                       // stopped: nothing more
+  t.control('continue');
+  await wait(60);
+  assert.strictEqual(calls.length, 1);                       // the line that was waiting at Stop stays skipped...
+  t.sync(['[00:01] Me: first line here', '[00:03] Me: second line here', '[00:05] Me: third line here']);
+  await until(() => calls.includes('third line here'));      // ...but new lines are translated
+  t.control('restart');
+  await until(() => calls.filter((c) => c === 'first line here').length === 2);
+  assert.ok(calls.includes('second line here'));             // restart also translates the skipped one
+});
+
+test('stop cancels the request in flight', async () => {
+  let sawAbort = false;
+  const t = new Translator({ delay: 1, translate: (text, o) => new Promise((resolve, reject) => {
+    o.signal.addEventListener('abort', () => { sawAbort = true; reject(new Error('aborted')); });
+  }) });
+  let errors = 0; t.onError = () => errors++;
+  t.configure({ enabled: true, target: 'de' });
+  t.sync(['[00:01] Me: a long line to translate']);
+  await wait(30);
+  t.control('stop');
+  await wait(30);
+  assert.ok(sawAbort);
+  assert.strictEqual(errors, 0);                             // a cancelled request is not an error
+});

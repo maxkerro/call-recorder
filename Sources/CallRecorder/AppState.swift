@@ -45,14 +45,23 @@ final class AppState: ObservableObject {
     }
     // MARK: Live translation (only while the translation pane is open)
 
-    @Published var translationOpen = false { didSet { if translationOpen { scheduleTranslation() } } }
+    enum TranslationState { case running, paused, stopped }
+    enum TranslationControl { case pause, resume, stop, restart }
+
+    @Published var translationOpen = false {
+        didSet { if translationOpen { scheduleTranslation() } else { cancelTranslation() } }
+    }
     @Published var translateTo: String {
         didSet { UserDefaults.standard.set(translateTo, forKey: "translateTo"); scheduleTranslation() }
     }
     @Published var translations: [String: String] = [:]      // "<lang>\u{1}<text>" -> translation
     @Published var translateNote = ""
+    @Published var translationState: TranslationState = .running
     private var translating = false
+    private var translationGen = 0                           // bumped whenever the running worker must give up
+    private var translationTask: Task<Void, Never>?
     private var failedAt: [String: Date] = [:]
+    private var skipped: Set<String> = []                    // lines left behind by Stop
     private var staleTranslations: [String: String] = [:]    // "<lang>\u{1}<line header>" -> last translation of a growing line
 
     private func lineHeader(_ line: String, body: String) -> String {
@@ -74,7 +83,7 @@ final class AppState: ObservableObject {
         for (i, l) in finalLines.enumerated() {
             let body = Translator.lineBody(l)
             let key = translationKey(body)
-            if body.count < 2 || translations[key] != nil { continue }
+            if body.count < 2 || translations[key] != nil || skipped.contains(key) { continue }
             if let t = failedAt[key], Date().timeIntervalSince(t) < 15 { continue }
             out.append((body, i > 0 ? Translator.lineBody(finalLines[i - 1]) : "", lineHeader(l, body: body)))
         }
@@ -82,32 +91,70 @@ final class AppState: ObservableObject {
     }
 
     private func scheduleTranslation() {
-        guard translationOpen, !translating, !pendingTranslations().isEmpty else { return }
+        guard translationOpen else { return }
+        if translationState == .stopped {                    // Continue picks up from now: what arrives while stopped is skipped
+            for p in pendingTranslations() { skipped.insert(translationKey(p.body)) }
+            return
+        }
+        guard translationState == .running, !translating, !pendingTranslations().isEmpty else { return }
         translating = true
-        Task { await runTranslation() }
+        let gen = translationGen
+        translationTask = Task { await runTranslation(gen) }
     }
 
-    /// One worker translates the lines that are missing, newest first (the live end stays current). New lines are picked up by the same loop,
-    /// so a stream of new text never restarts or starves it.
-    private func runTranslation() async {
+    /// Gives up the running worker (and the request in flight, if any).
+    private func cancelTranslation() {
+        translationGen += 1
+        translationTask?.cancel()
+        translationTask = nil
+        translating = false
+    }
+
+    /// Pause / Continue / Stop / Restart. Pause lets the current line finish; Stop cancels it and skips the backlog.
+    func translationControl(_ action: TranslationControl) {
+        switch action {
+        case .pause:
+            if translationState == .running { translationState = .paused }
+        case .resume:
+            translationState = .running
+            scheduleTranslation()
+        case .stop:
+            translationState = .stopped
+            for p in pendingTranslations() { skipped.insert(translationKey(p.body)) }
+            cancelTranslation()
+        case .restart:
+            cancelTranslation()
+            translations = [:]; staleTranslations = [:]; failedAt = [:]; skipped = []
+            translateNote = ""
+            translationState = .running
+            scheduleTranslation()
+        }
+    }
+
+    /// One worker translates the lines that are missing, newest first (the live end stays current).
+    /// New lines are picked up by the same loop, so a stream of new text never restarts or starves it.
+    private func runTranslation(_ gen: Int) async {
         try? await Task.sleep(nanoseconds: 900_000_000)          // let a growing line settle
-        while translationOpen, let next = pendingTranslations().last {
+        while gen == translationGen, !Task.isCancelled, translationOpen, translationState == .running,
+              let next = pendingTranslations().last {
             let key = translationKey(next.body)
             let target = translateTo
             do {
                 let out = try await Translator.translate(next.body, target: target, context: next.context)
+                if gen != translationGen || Task.isCancelled { break }       // stopped or restarted meanwhile: drop the answer
                 if out.isEmpty { failedAt[key] = Date() } else {
                     translations["\(target)\u{1}\(next.body)"] = out
                     staleTranslations["\(target)\u{1}\(next.header)"] = out
                 }
                 translateNote = ""
             } catch {
+                if gen != translationGen || Task.isCancelled { break }       // a cancelled request is not an error
                 failedAt[key] = Date()
                 translateNote = "Translation: \(error.localizedDescription)"
             }
             if translations.count > 5000 { translations = [:] }
         }
-        translating = false
+        if gen == translationGen { translating = false }
     }
 
     @Published var glossaryCorrect: Bool {
@@ -274,6 +321,7 @@ final class AppState: ObservableObject {
         defer { busy = false }
         finalLines = []
         callVoices = [:]
+        confirmed = []
         lines = []
         openLine = [:]
         partials = [:]
@@ -488,7 +536,7 @@ final class AppState: ObservableObject {
                 var turns: [SpeakerTurn] = []
                 if identifySpeakers {
                     status = "Finding who speaks when… (the first time this downloads small speaker models)"
-                    do { turns = try await Diarizer.shared.diarize(url); callVoices = await Diarizer.shared.lastVoices }
+                    do { turns = try await Diarizer.shared.diarize(url); callVoices = await Diarizer.shared.lastVoices; confirmed = [] }
                     catch { checkNote = "Speaker recognition failed: \(error.localizedDescription)" }
                     status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
                 }
@@ -534,6 +582,18 @@ final class AppState: ObservableObject {
     /// Voice fingerprints of the speakers in the current transcript, by label (kept in memory only).
     private var callVoices: [String: [Float]] = [:]
     @Published var knownVoices: [String] = VoiceBook.names
+    /// Recognised people in this call whose voice has not been confirmed yet (the "Confirm" button).
+    @Published var confirmable: [String] = []
+    private var confirmed: Set<String> = []
+
+    /// The app recognised this person correctly: their saved voice is refined with this call.
+    func confirmVoice(_ name: String) {
+        guard let voice = callVoices[name], !confirmed.contains(name) else { return }
+        VoiceBook.learn(name: name, embedding: voice)
+        confirmed.insert(name)
+        refreshSpeakers()
+        status = "Confirmed \(name): the voice profile was refined"
+    }
 
     func forgetVoice(_ name: String) { VoiceBook.forget(name); knownVoices = VoiceBook.names }
     func forgetAllVoices() { VoiceBook.forgetAll(); knownVoices = [] }
@@ -541,6 +601,7 @@ final class AppState: ObservableObject {
     /// Labels such as "Speaker 1" present in the current transcript (offered in the Rename menu).
     private func refreshSpeakers() {
         knownVoices = VoiceBook.names
+        confirmable = []   // recomputed below once the labels are known
         var seen: [String] = []
         // Lines look like "[mm:ss] Label: text".
         for l in finalLines {
@@ -551,6 +612,7 @@ final class AppState: ObservableObject {
             if label.hasPrefix("Speaker") || callVoices[label] != nil, !seen.contains(label) { seen.append(label) }
         }
         speakerLabels = seen
+        confirmable = seen.filter { knownVoices.contains($0) && callVoices[$0] != nil && !confirmed.contains($0) }
     }
 
     /// Renames a speaker in the shown transcript and in the saved transcript files.
@@ -618,6 +680,7 @@ final class AppState: ObservableObject {
             do {
                 turns = try await Diarizer.shared.diarize(system)
                 callVoices = await Diarizer.shared.lastVoices
+                confirmed = []
                 let names = Set(turns.map(\.speaker)).sorted()
                 diarizeNote = turns.isEmpty
                     ? " Speaker recognition found no distinct voices in the call audio."
@@ -826,6 +889,65 @@ final class AppState: ObservableObject {
     func openFolder() { NSWorkspace.shared.open(rootDir) }
 
     func openVocabulary() { NSWorkspace.shared.open(WhisperEngine.ensureVocabularyFile()) }
+
+    // MARK: Word statistics
+
+    struct WordReport {
+        var source: String
+        var frequent: [WordStats.Item]
+        var unknown: [WordStats.Item]
+    }
+    @Published var wordReport: WordReport?
+
+    /// The 10 most frequent words and 10 unknown words (not in the Vocabulary list) of the transcript on screen,
+    /// or of a transcript file if there is none.
+    func analyzeWords() {
+        var transcript = finalLines.joined(separator: "\n")
+        var source = "current transcript"
+        if transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.plainText]
+            panel.directoryURL = Self.dayFolder(in: rootDir)
+            panel.message = "Choose a transcript file to analyze"
+            NSApp.activate(ignoringOtherApps: true)
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else {
+                status = "Could not read \(url.lastPathComponent)"
+                return
+            }
+            transcript = content
+            source = url.lastPathComponent
+        }
+        wordReport = WordReport(source: source,
+                                frequent: WordStats.topWords(transcript, n: 10),
+                                unknown: WordStats.unknownWords(transcript, vocabulary: WhisperEngine.vocabularyTerms(), n: 10))
+    }
+
+    /// Adds words to the Vocabulary list (skipping ones already there).
+    func addVocabulary(_ words: [String]) {
+        let url = WhisperEngine.ensureVocabularyFile()
+        var have = Set(WhisperEngine.vocabularyTerms().map(WordStats.norm))
+        var add: [String] = []
+        for w in words.map({ $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }) where !w.isEmpty {
+            if have.contains(WordStats.norm(w)) { continue }
+            have.insert(WordStats.norm(w))
+            add.append(String(w.prefix(60)))
+        }
+        if !add.isEmpty {
+            var content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            if !content.hasSuffix("\n") { content += "\n" }
+            content += add.joined(separator: "\n") + "\n"
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+            if var r = wordReport {
+                let gone = Set(add.map(WordStats.norm))
+                r.unknown.removeAll { gone.contains(WordStats.norm($0.word)) }
+                wordReport = r
+            }
+            status = "Added to the Vocabulary list: \(add.joined(separator: ", "))"
+        } else {
+            status = "Those words are already in the Vocabulary list."
+        }
+    }
 
     // MARK: ffmpeg
 

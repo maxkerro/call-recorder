@@ -35,6 +35,12 @@
     <span class="tlabel">Transcript</span>
     <span class="spacer"></span>
     <select id="trLang" class="hidden" title="Translate into"></select>
+    <span id="trCtl" class="hidden">
+      <button class="mini" id="trPause" title="Pause: finish the current line, then wait">⏸</button>
+      <button class="mini" id="trContinue" title="Continue translating">▶</button>
+      <button class="mini" id="trStop" title="Stop: cancel the current line and skip what is waiting">⏹</button>
+      <button class="mini" id="trRestart" title="Restart: translate everything again from the start">↻</button>
+    </span>
     <button id="btnTranslate">Translation ◂</button>
   </div>
   <p id="translateNote" class="hint hidden"></p>
@@ -47,6 +53,10 @@
     <select id="renameWho"></select>
     <input id="renameTo" type="text" placeholder="Name, e.g. Anna">
     <button id="btnRename">Rename speaker</button>
+  </div>
+  <div id="confirmBox" class="row hidden">
+    <select id="confirmWho"></select>
+    <button id="btnConfirm" title="The app recognised this person correctly: refine their saved voice">Confirm speaker</button>
   </div>
 
   <section id="summaryBox" class="hidden">
@@ -64,7 +74,16 @@
     <button id="btnFile">Transcribe file</button>
     <button id="btnFolder">Open folder</button>
     <button id="btnVocab">Vocabulary</button>
+    <button id="btnWords" title="Most frequent words and words not in your Vocabulary list">Analyze words</button>
   </div>
+  <section id="wordsBox" class="hidden">
+    <h2>Words <span id="wordsSource" class="hint"></span></h2>
+    <div class="cols">
+      <div><h3>10 most frequent</h3><ol id="wordsTop"></ol></div>
+      <div><h3>10 unknown <button class="mini" id="btnAddAll" title="Add all to the Vocabulary list">Add all</button></h3><ol id="wordsUnknown"></ol></div>
+    </div>
+    <p class="hint">Unknown = names, abbreviations and terms that are not in your Vocabulary list. Add the ones Whisper should spell right.</p>
+  </section>
   <label class="row opacity">Window transparency
     <input type="range" id="opacity" min="30" max="100" step="1" value="100">
     <span id="opacityValue">100%</span>

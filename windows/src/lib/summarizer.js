@@ -30,10 +30,27 @@ function topicLine(topic) {
   return `Topic of this call, set in advance by the user: "${t}". Organize the summary around this topic: what was said, decided and left open about it; mention anything important but off-topic briefly. If the transcript says nothing about the topic, say so.\n\n`;
 }
 
+/** Names the user gave to speakers (labels other than Me / Them / Speaker N) so the summary can use them. */
+function participants(transcript) {
+  const names = [];
+  for (const m of String(transcript).matchAll(/^\[[^\]]*\]\s*([^:\[\]]{1,40}):/gm)) {
+    const n = m[1].trim();
+    if (!n || /^(me|them|speaker\s*[\d?]+)$/i.test(n) || names.includes(n)) continue;
+    names.push(n);
+  }
+  return names;
+}
+
+function participantsLine(transcript) {
+  const n = participants(transcript);
+  if (!n.length) return '';
+  return `Named participants (their names are the speaker labels in the transcript): ${n.join(', ')}. Use these names in the summary, for example for who decided something or who owns an action item. "Me" is the user; "Them" and "Speaker N" are people who were not identified, so do not invent names for them.\n\n`;
+}
+
 class SummaryError extends Error {}
 
 /** Prompt + transcript, for pasting into any chat (e.g. claude.ai). */
-const pasteText = (transcript, topic = '') => `${PROMPT}\n\n${topicLine(topic)}Transcript:\n${transcript}`;
+const pasteText = (transcript, topic = '') => `${PROMPT}\n\n${topicLine(topic)}${participantsLine(transcript)}Transcript:\n${transcript}`;
 
 async function installedModels(base = BASE) {
   assertLoopback(base);
@@ -66,13 +83,13 @@ function split(textIn, limit) {
   return out;
 }
 
-async function generate(base, model, prompt, options = {}, timeoutMs = 600000) {
+async function generate(base, model, prompt, options = {}, timeoutMs = 600000, signal = null) {
   assertLoopback(base);
   const r = await fetch(`${base}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, prompt, stream: false, options: { num_ctx: 16384, temperature: 0.2, ...options } }),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
   });
   const j = await r.json().catch(() => ({}));
   if (j.error) throw new SummaryError(`Ollama: ${j.error}`);
@@ -92,7 +109,7 @@ async function summarize(transcript, { base = BASE, chunkLimit = 20000, topic = 
       `Summarize part ${i + 1} of ${chunks.length} of a call transcript in detail (key points, decisions, action items with owners, open questions). Same language as the transcript.\n\n${chunks[i]}`));
   }
   return generate(base, model,
-    `${PROMPT}\n\n${topicLine(topic)}Instead of a transcript you get notes on consecutive parts of the call:\n\n${parts.join('\n\n---\n\n')}`);
+    `${PROMPT}\n\n${topicLine(topic)}${participantsLine(transcript)}Instead of a transcript you get notes on consecutive parts of the call:\n\n${parts.join('\n\n---\n\n')}`);
 }
 
 // ---- screenshots: described by a local vision model ---------------------------------------------------------------------
@@ -126,4 +143,4 @@ async function describeImage(bytes, { base = BASE, model, topic = '' } = {}) {
   return j.response.trim().replace(/\s+/g, ' ');
 }
 
-module.exports = { generate, BASE, summarize, pasteText, installedModels, pickModel, pickVisionModel, describeImage, topicLine, split, SummaryError, PROMPT };
+module.exports = { participants, participantsLine, generate, BASE, summarize, pasteText, installedModels, pickModel, pickVisionModel, describeImage, topicLine, split, SummaryError, PROMPT };

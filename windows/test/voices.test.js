@@ -1,5 +1,5 @@
 'use strict';
-require('./helpers');
+require('./helpers').sandbox();
 const test = require('node:test');
 const assert = require('node:assert');
 const voices = require('../src/lib/voices');

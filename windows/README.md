@@ -94,3 +94,9 @@ The "Translation" button above the transcript opens a side pane (the window wide
 
 ## Known voices
 Rename a speaker after a call and the app remembers the voice (stored only in `voices.json` in the support folder); later calls use the name. Settings → Known voices lists and forgets them.
+
+## More
+- Summaries get the names of named speakers ("Named participants").
+- **Confirm speaker** refines the saved voice of a correctly recognised person.
+- **Analyze words**: 10 most frequent and 10 unknown words (not in the Vocabulary list), with "+ Vocabulary".
+- Translation pane buttons: ⏸ pause, ▶ continue, ⏹ stop (cancels the request, skips the backlog), ↻ restart.

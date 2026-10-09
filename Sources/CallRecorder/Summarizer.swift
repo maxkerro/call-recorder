@@ -30,6 +30,30 @@ enum Summarizer {
     """
 
     /// The topic is typed by the user before the call; it steers the summary. One line, bounded length.
+    /// Names the user gave to speakers (labels other than Me / Them / Speaker N), so the summary can use them.
+    static func participants(_ transcript: String) -> [String] {
+        var names: [String] = []
+        for line in transcript.components(separatedBy: .newlines) {
+            guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { continue }
+            let rest = line[line.index(after: close)...].drop(while: { $0 == " " })
+            guard let colon = rest.firstIndex(of: ":") else { continue }
+            let n = rest[rest.startIndex..<colon].trimmingCharacters(in: .whitespaces)
+            if n.isEmpty || n.count > 40 || n.contains("[") || n.contains("]") { continue }
+            let l = n.lowercased()
+            if l == "me" || l == "them" || l.hasPrefix("speaker") || names.contains(n) { continue }
+            names.append(n)
+        }
+        return names
+    }
+
+    static func participantsLine(_ transcript: String) -> String {
+        let n = participants(transcript)
+        if n.isEmpty { return "" }
+        return "Named participants (their names are the speaker labels in the transcript): \(n.joined(separator: ", ")). "
+            + "Use these names in the summary, for example for who decided something or who owns an action item. "
+            + "\"Me\" is the user; \"Them\" and \"Speaker N\" are people who were not identified, so do not invent names for them.\n\n"
+    }
+
     static func topicLine(_ topic: String) -> String {
         let t = topic.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(300)
         if t.isEmpty { return "" }
@@ -38,7 +62,7 @@ enum Summarizer {
 
     /// Prompt + transcript, for pasting into any chat (e.g. claude.ai).
     static func pasteText(_ transcript: String, topic: String = "") -> String {
-        prompt + "\n\n" + topicLine(topic) + "Transcript:\n" + transcript
+        prompt + "\n\n" + topicLine(topic) + participantsLine(transcript) + "Transcript:\n" + transcript
     }
 
     static func installedModels() async throws -> [String] {
@@ -79,7 +103,7 @@ enum Summarizer {
                 prompt: "Summarize part \(i + 1) of \(chunks.count) of a call transcript in detail (key points, decisions, action items with owners, open questions). Same language as the transcript.\n\n" + c))
         }
         return try await generate(model: model,
-            prompt: prompt + "\n\n" + topicLine(topic) + "Instead of a transcript you get notes on consecutive parts of the call:\n\n" + parts.joined(separator: "\n\n---\n\n"))
+            prompt: prompt + "\n\n" + topicLine(topic) + participantsLine(transcript) + "Instead of a transcript you get notes on consecutive parts of the call:\n\n" + parts.joined(separator: "\n\n---\n\n"))
     }
 
     private static let visionPreferred = ["qwen2.5vl", "qwen3-vl", "llama3.2-vision", "gemma3", "minicpm-v", "llava"]

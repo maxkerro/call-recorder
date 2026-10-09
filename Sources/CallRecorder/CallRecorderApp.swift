@@ -168,6 +168,15 @@ struct MenuView: View {
             }
         }
 
+        if !state.confirmable.isEmpty && !state.isRecording {
+            Menu("Confirm speaker") {
+                ForEach(state.confirmable, id: \.self) { name in
+                    Button("\(name) is correct") { state.confirmVoice(name) }
+                }
+            }
+            .help("The app recognised this person correctly: refine their saved voice")
+        }
+
         if let hint = state.whisperHint {
             Text(hint)
                 .font(.caption)
@@ -179,6 +188,20 @@ struct MenuView: View {
             Text("Transcript").font(.subheadline.bold())
             Spacer()
             if state.translationOpen {
+                HStack(spacing: 4) {
+                    Button { state.translationControl(.pause) } label: { Image(systemName: "pause.fill") }
+                        .help("Pause: finish the current line, then wait")
+                        .disabled(state.translationState != .running)
+                    Button { state.translationControl(.resume) } label: { Image(systemName: "play.fill") }
+                        .help("Continue translating")
+                        .disabled(state.translationState == .running)
+                    Button { state.translationControl(.stop) } label: { Image(systemName: "stop.fill") }
+                        .help("Stop: cancel the current line and skip what is waiting")
+                        .disabled(state.translationState == .stopped)
+                    Button { state.translationControl(.restart) } label: { Image(systemName: "arrow.counterclockwise") }
+                        .help("Restart: translate everything again from the start")
+                }
+                .controlSize(.small)
                 Picker("", selection: $state.translateTo) {
                     ForEach(Translator.languages, id: \.code) { Text($0.name).tag($0.code) }
                 }
@@ -265,10 +288,48 @@ struct MenuView: View {
                 .disabled(state.busy || state.isRecording)
             Button("Open folder") { state.openFolder() }
             Button("Vocabulary") { state.openVocabulary() }
+            Button("Analyze words") { state.analyzeWords() }
+                .help("Most frequent words and words that are not in your Vocabulary list")
             Spacer()
         }
         .buttonStyle(.bordered)
         .fixedSize(horizontal: false, vertical: true)
+
+        if let r = state.wordReport {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Words (\(r.source))").font(.subheadline.bold())
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("10 most frequent").font(.caption.bold())
+                        ForEach(Array(r.frequent.enumerated()), id: \.offset) { i, w in
+                            Text("\(i + 1). \(w.word) × \(w.count)").font(.callout)
+                        }
+                        if r.frequent.isEmpty { Text("—") }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("10 unknown").font(.caption.bold())
+                            if !r.unknown.isEmpty {
+                                Button("Add all") { state.addVocabulary(r.unknown.map(\.word)) }
+                                    .controlSize(.mini)
+                                    .help("Add all to the Vocabulary list")
+                            }
+                        }
+                        ForEach(Array(r.unknown.enumerated()), id: \.offset) { i, w in
+                            HStack(spacing: 6) {
+                                Text("\(i + 1). \(w.word) × \(w.count)").font(.callout)
+                                Button("+ Vocabulary") { state.addVocabulary([w.word]) }.controlSize(.mini)
+                            }
+                        }
+                        if r.unknown.isEmpty { Text("—") }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Text("Unknown = names, abbreviations and terms that are not in your Vocabulary list. Add the ones Whisper should spell right.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
 
         HStack(spacing: 10) {
             Text("Window transparency")
