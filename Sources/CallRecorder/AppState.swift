@@ -53,20 +53,30 @@ final class AppState: ObservableObject {
     @Published var translateNote = ""
     private var translating = false
     private var failedAt: [String: Date] = [:]
+    private var staleTranslations: [String: String] = [:]    // "<lang>\u{1}<line header>" -> last translation of a growing line
+
+    private func lineHeader(_ line: String, body: String) -> String {
+        guard !body.isEmpty, let r = line.range(of: body, options: .backwards), r.lowerBound > line.startIndex else { return line }
+        return String(line[line.startIndex..<r.lowerBound])
+    }
 
     private func translationKey(_ body: String) -> String { "\(translateTo)\u{1}\(body)" }
 
     /// The translation of a transcript line in the selected language, if it is ready.
-    func translation(for line: String) -> String? { translations[translationKey(Translator.lineBody(line))] }
+    /// A line that is still growing has no exact translation yet: the one for its earlier text is shown meanwhile.
+    func translation(for line: String) -> String? {
+        let body = Translator.lineBody(line)
+        return translations[translationKey(body)] ?? staleTranslations["\(translateTo)\u{1}\(lineHeader(line, body: body))"]
+    }
 
-    private func pendingTranslations() -> [(body: String, context: String)] {
-        var out: [(body: String, context: String)] = []
+    private func pendingTranslations() -> [(body: String, context: String, header: String)] {
+        var out: [(body: String, context: String, header: String)] = []
         for (i, l) in finalLines.enumerated() {
             let body = Translator.lineBody(l)
             let key = translationKey(body)
             if body.count < 2 || translations[key] != nil { continue }
             if let t = failedAt[key], Date().timeIntervalSince(t) < 15 { continue }
-            out.append((body, i > 0 ? Translator.lineBody(finalLines[i - 1]) : ""))
+            out.append((body, i > 0 ? Translator.lineBody(finalLines[i - 1]) : "", lineHeader(l, body: body)))
         }
         return out
     }
@@ -86,7 +96,10 @@ final class AppState: ObservableObject {
             let target = translateTo
             do {
                 let out = try await Translator.translate(next.body, target: target, context: next.context)
-                if out.isEmpty { failedAt[key] = Date() } else { translations["\(target)\u{1}\(next.body)"] = out }
+                if out.isEmpty { failedAt[key] = Date() } else {
+                    translations["\(target)\u{1}\(next.body)"] = out
+                    staleTranslations["\(target)\u{1}\(next.header)"] = out
+                }
                 translateNote = ""
             } catch {
                 failedAt[key] = Date()

@@ -48,7 +48,11 @@ class Translator {
     this.lines = [];
     this.running = false;
     this.failedAt = new Map();           // key -> time of the last failure (retry after a while)
+    this.stale = new Map();              // target+line header ("[01:02] Them:") -> last translation of that growing line
   }
+
+  header(line, body) { const i = line.lastIndexOf(body); return i > 0 ? line.slice(0, i) : line; }
+  staleKey(line, body) { return `${this.target}\u0001${this.header(line, body)}`; }
 
   key(body) { return `${this.target}\u0001${body}`; }
 
@@ -65,7 +69,12 @@ class Translator {
   /** {body: translation} for the lines on screen, in the current target language. */
   view(lines = this.lines) {
     const out = {};
-    for (const l of lines) { const b = lineBody(l); const t = this.cache.get(this.key(b)); if (t) out[b] = t; }
+    // A line that is still growing has no exact translation yet: show the one for its earlier text meanwhile.
+    for (const l of lines) {
+      const b = lineBody(l);
+      const t = this.cache.get(this.key(b)) || this.stale.get(this.staleKey(l, b));
+      if (t) out[b] = t;
+    }
     return out;
   }
 
@@ -76,7 +85,7 @@ class Translator {
       if (body.length < 2 || this.cache.has(this.key(body))) return;
       const failed = this.failedAt.get(this.key(body));
       if (failed && Date.now() - failed < 15000) return;
-      out.push({ body, context: i > 0 ? lineBody(this.lines[i - 1]) : '' });
+      out.push({ body, header: this.header(l, body), context: i > 0 ? lineBody(this.lines[i - 1]) : '' });
     });
     return out;
   }
@@ -98,7 +107,10 @@ class Translator {
       const key = this.key(next.body);
       try {
         const out = await this.translate(next.body, { target, context: next.context });
-        if (out) this.cache.set(`${target}\u0001${next.body}`, out.trim());
+        if (out) {
+          this.cache.set(`${target}\u0001${next.body}`, out.trim());
+          this.stale.set(`${target}\u0001${next.header}`, out.trim());
+        }
         else this.failedAt.set(key, Date.now());
       } catch (e) {
         this.failedAt.set(key, Date.now());
