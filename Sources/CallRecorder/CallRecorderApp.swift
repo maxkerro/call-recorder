@@ -85,6 +85,10 @@ struct MenuView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
 
+            if let p = state.progress {
+                ProgressCard(progress: p, label: state.progressLabel, start: state.progressStart)
+            }
+
             switch tab {
             case .recorder: recorderTab
             case .settings: settingsTab
@@ -92,14 +96,6 @@ struct MenuView: View {
             }
 
             Divider()
-            if let p = state.progress {
-                HStack(spacing: 10) {
-                    if p < 0 { ProgressView().controlSize(.small) } else { ProgressView(value: p).frame(maxWidth: .infinity) }
-                    Text(p < 0 ? "\(state.progressLabel)…" : "\(state.progressLabel): \(Int((p * 100).rounded())) %")
-                        .font(.callout.monospacedDigit())
-                    if p < 0 { Spacer() }
-                }
-            }
             Text(state.status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -426,5 +422,55 @@ struct MenuView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
+    }
+}
+
+
+/// Big, easy-to-see progress display: label, large percentage, a thick bar, elapsed time and a time estimate.
+struct ProgressCard: View {
+    var progress: Double            // 0...1; negative = busy, length unknown
+    var label: String
+    var start: Date
+
+    private func duration(_ s: Double) -> String {
+        let t = Int(max(0, s).rounded())
+        if t >= 3600 { return "\(t / 3600) h \((t % 3600) / 60) min" }
+        if t >= 60 { return "\(t / 60) min \(t % 60) s" }
+        return "\(t) s"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(progress < 0 ? "\(label)…" : label).font(.headline)
+                Spacer()
+                if progress >= 0 {
+                    Text("\(Int((progress * 100).rounded())) %")
+                        .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            if progress < 0 {
+                ProgressView().progressViewStyle(.linear).scaleEffect(x: 1, y: 2.4, anchor: .center).padding(.vertical, 4)
+            } else {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.accentColor.opacity(0.2))
+                        Capsule().fill(Color.accentColor)
+                            .frame(width: max(18, geo.size.width * progress))
+                            .animation(.easeOut(duration: 0.4), value: progress)
+                    }
+                }
+                .frame(height: 18)
+            }
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                let el = ctx.date.timeIntervalSince(start)
+                let eta = (progress >= 0.05 && progress < 1 && el > 3) ? " · about \(duration(el * (1 - progress) / progress)) left" : ""
+                Text("Elapsed \(duration(el))\(eta)").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor.opacity(0.6), lineWidth: 1))
     }
 }

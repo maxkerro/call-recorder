@@ -1,7 +1,7 @@
 {
   "name": "callrecorder-windows",
   "productName": "CallRecorder",
-  "version": "1.24.27",
+  "version": "1.24.28",
   "description": "Records any call you hear plus your microphone, transcribes it live, labels speakers and summarizes it. Windows version.",
   "main": "src/main.js",
   "scripts": {

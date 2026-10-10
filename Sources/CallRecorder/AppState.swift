@@ -900,11 +900,13 @@ final class AppState: ObservableObject {
     /// 0...1 while a transcription runs; negative = busy with unknown length (finding speakers); nil = nothing running.
     @Published var progress: Double?
     @Published var progressLabel = ""
+    @Published var progressStart = Date()
 
     /// Starts a progress display and returns the callback for the (background) Whisper pass.
     private func startProgress(_ label: String) -> @Sendable (Double) -> Void {
         progress = 0
         progressLabel = label
+        progressStart = Date()
         return { [weak self] f in
             Task { @MainActor in
                 guard let self, self.progress != nil else { return }
@@ -914,7 +916,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func busyProgress(_ label: String) { progress = -1; progressLabel = label }
+    private func busyProgress(_ label: String) { progress = -1; progressLabel = label; progressStart = Date() }
     private func endProgress() { progress = nil; progressLabel = "" }
 
     // MARK: Word statistics

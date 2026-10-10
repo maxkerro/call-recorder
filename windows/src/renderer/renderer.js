@@ -143,12 +143,7 @@ function render(s) {
   show($('btnCopySummary'), !!s.summaryText);
 
   $('btnFile').disabled = s.busy || s.isRecording;
-  const pr = s.progress;
-  show($('progressBox'), pr !== null && pr !== undefined);
-  if (pr !== null && pr !== undefined) {
-    if (pr < 0) $('progress').removeAttribute('value'); else $('progress').value = Math.round(pr * 100);       // no value = busy, unknown length
-    setText($('progressText'), pr < 0 ? `${s.progressLabel}…` : `${s.progressLabel}: ${Math.round(pr * 100)} %`);
-  }
+  renderProgress(s);
   setText($('status'), s.status);
   setText($('checkNote'), s.checkNote);
 }
@@ -200,3 +195,30 @@ window.api.about().then((i) => {
 
 window.api.onState(render);
 window.api.state().then(render);
+
+// ---- progress card (big bar, percent, elapsed time, estimate) -------------------------------------------------------
+let progressState = null;
+function fmtDur(sec) {
+  sec = Math.max(0, Math.round(sec));
+  return sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min` : sec >= 60 ? `${Math.floor(sec / 60)} min ${sec % 60} s` : `${sec} s`;
+}
+function renderProgress(s) {
+  progressState = (s.progress === null || s.progress === undefined) ? null : { p: s.progress, label: s.progressLabel, start: s.progressStart };
+  show($('progressBox'), !!progressState);
+  if (!progressState) return;
+  const { p, label } = progressState;
+  setText($('progressLabel'), p < 0 ? `${label}…` : label);
+  setText($('progressPct'), p < 0 ? '' : `${Math.round(p * 100)} %`);
+  $('pfill').style.width = p < 0 ? '35%' : `${Math.round(p * 100)}%`;
+  $('progressBox').classList.toggle('busy', p < 0);
+  tickProgress();
+}
+function tickProgress() {
+  if (!progressState) return;
+  const { p, start } = progressState;
+  const el = start ? (Date.now() - start) / 1000 : 0;
+  let t = `Elapsed ${fmtDur(el)}`;
+  if (p >= 0.05 && p < 1 && el > 3) t += ` · about ${fmtDur(el * (1 - p) / p)} left`;
+  setText($('progressTime'), t);
+}
+setInterval(tickProgress, 1000);

@@ -18,6 +18,11 @@
   <button id="tabSettings" class="tab" data-tab="settings" role="tab">Settings</button>
   <button id="tabAbout" class="tab" data-tab="about" role="tab">About</button>
 </nav>
+<div id="progressBox" class="pcard hidden">
+  <div class="phead"><span id="progressLabel"></span><span id="progressPct"></span></div>
+  <div class="pbar"><div id="pfill"></div></div>
+  <div id="progressTime" class="ptime"></div>
+</div>
 
 <main id="page-recorder">
   <div class="btnrow">
@@ -122,7 +127,7 @@
 </main>
 
 <hr>
-<div id="progressBox" class="progressbox hidden"><progress id="progress" max="100"></progress><span id="progressText"></span></div>
+
 <p id="status" class="note"></p>
 <p id="checkNote" class="note"></p>
 

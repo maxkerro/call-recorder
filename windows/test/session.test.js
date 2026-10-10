@@ -349,4 +349,5 @@ test('transcribing a file reports progress (percent) and clears it afterwards', 
   assert.ok(seen.includes(0.25) && seen.includes(1), JSON.stringify(seen));
   assert.strictEqual(seen.filter((p) => p === 0.25).length, 1);            // the same percent is not announced twice
   assert.strictEqual(s.s.progress, null);                                  // cleared when done
+  assert.strictEqual(s.s.progressStart, 0);
 });
