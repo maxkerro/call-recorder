@@ -903,6 +903,7 @@ final class AppState: ObservableObject {
     @Published var transcriptHeight: CGFloat = 260        // the big text areas can be resized by dragging their grip
     @Published var summaryHeight: CGFloat = 180
     @Published var wordsExpanded = true
+    @Published var wordsHeight: CGFloat = 130
 
     /// Changes whenever the transcript grows, so the transcript area follows its end.
     var transcriptScrollKey: Int { finalLines.count &* 31 &+ partials.values.reduce(0) { $0 &+ $1.count } }

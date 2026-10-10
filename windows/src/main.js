@@ -100,7 +100,7 @@ async function captureScreen() {
 function createWindow() {
   const wa = screen.getPrimaryDisplay().workAreaSize;       // never open bigger than the screen; the window stays resizable
   win = new BrowserWindow({
-    width: Math.min(600, wa.width), height: Math.min(860, wa.height), minWidth: Math.min(560, wa.width), minHeight: Math.min(360, wa.height),
+    width: Math.min(600, wa.width), height: Math.min(860, wa.height), minWidth: Math.min(560, wa.width), minHeight: Math.min(520, wa.height),
     resizable: true, title: 'CallRecorder', autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {

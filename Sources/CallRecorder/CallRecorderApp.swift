@@ -90,13 +90,11 @@ struct MenuView: View {
                 ProgressCard(progress: p, label: state.progressLabel, start: state.progressStart)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    switch tab {
-                    case .recorder: recorderTab
-                    case .settings: settingsTab
-                    case .about: aboutTab
-                    }
+            switch tab {
+            case .recorder: recorderTab
+            case .settings: settingsTab
+            case .about: aboutTab
+            }
 
                     Divider()
                     Text(state.status)
@@ -110,13 +108,10 @@ struct MenuView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
         .controlSize(.large)
         .padding(14)
-        .frame(minWidth: 520, idealWidth: 600, maxWidth: .infinity, minHeight: 360, idealHeight: 700, maxHeight: .infinity)
+        .frame(minWidth: 520, idealWidth: 600, maxWidth: .infinity, minHeight: 520, idealHeight: 700, maxHeight: .infinity, alignment: .top)
         .onAppear { DispatchQueue.main.async { state.applyOpacity(); state.fitWindowToScreen() } }
     }
 
@@ -227,7 +222,7 @@ struct MenuView: View {
         }
 
         if !state.finalLines.isEmpty || !state.partials.isEmpty {
-            ResizablePane(height: $state.transcriptHeight, scrollKey: state.transcriptScrollKey) {
+            ResizablePane(height: $state.transcriptHeight, scrollKey: state.transcriptScrollKey, flexible: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(state.finalLines.enumerated()), id: \.offset) { _, l in
                             HStack(alignment: .top, spacing: 14) {
@@ -260,7 +255,7 @@ struct MenuView: View {
             Divider()
             Text("Summary").font(.subheadline.bold())
             if !state.summaryText.isEmpty {
-                ResizablePane(height: $state.summaryHeight) {
+                ResizablePane(height: $state.summaryHeight, gripOnTop: true) {
                     Text(state.summaryText)
                         .font(.callout)
                         .textSelection(.enabled)
@@ -301,6 +296,7 @@ struct MenuView: View {
         if let r = state.wordReport {
             DisclosureGroup(isExpanded: $state.wordsExpanded) {
               VStack(alignment: .leading, spacing: 6) {
+                ResizablePane(height: $state.wordsHeight, minHeight: 60) {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("10 most frequent").font(.caption.bold())
@@ -329,6 +325,7 @@ struct MenuView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                }
                 Text("Unknown = names, abbreviations and terms that are not in your Vocabulary list. Add the ones Whisper should spell right.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
               }
@@ -345,6 +342,7 @@ struct MenuView: View {
                 .frame(width: 52, alignment: .trailing)
         }
         }
+        .frame(maxHeight: .infinity, alignment: .top)       // the transcript takes the free space; no page-wide scrolling
     }
 
     // MARK: Settings
@@ -387,13 +385,18 @@ struct MenuView: View {
             if state.knownVoices.isEmpty {
                 Text("None yet").font(.caption).foregroundStyle(.secondary)
             } else {
-                ForEach(state.knownVoices, id: \.self) { name in
-                    HStack {
-                        Text(name)
-                        Spacer()
-                        Button("Forget") { state.forgetVoice(name) }.controlSize(.small)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(state.knownVoices, id: \.self) { name in
+                            HStack {
+                                Text(name)
+                                Spacer()
+                                Button("Forget") { state.forgetVoice(name) }.controlSize(.small)
+                            }
+                        }
                     }
                 }
+                .frame(maxHeight: 140)
                 Button("Forget all voices") { state.forgetAllVoices() }.controlSize(.small)
             }
         }
@@ -478,49 +481,68 @@ struct ProgressCard: View {
 }
 
 
-/// A scrollable area the user can resize by dragging the grip at its bottom edge.
+/// A scrollable area with its own scrollbar. Either it takes all the free space (`flexible`, it follows the window),
+/// or it has a height the user sets by dragging the grip at its bottom (or top) edge.
 /// With a changing `scrollKey` it follows the end of its content (the live transcript).
 struct ResizablePane<Content: View>: View {
     @Binding var height: CGFloat
     var scrollKey: Int
     var minHeight: CGFloat
+    var flexible: Bool
+    var gripOnTop: Bool
     private let content: Content
     @State private var startHeight: CGFloat?
 
-    init(height: Binding<CGFloat>, scrollKey: Int = 0, minHeight: CGFloat = 80, @ViewBuilder content: () -> Content) {
+    init(height: Binding<CGFloat>, scrollKey: Int = 0, minHeight: CGFloat = 80, flexible: Bool = false,
+         gripOnTop: Bool = false, @ViewBuilder content: () -> Content) {
         self._height = height
         self.scrollKey = scrollKey
         self.minHeight = minHeight
+        self.flexible = flexible
+        self.gripOnTop = gripOnTop
         self.content = content()
+    }
+
+    private var grip: some View {
+        Capsule().fill(Color.secondary.opacity(0.55))
+            .frame(width: 44, height: 4)
+            .frame(maxWidth: .infinity)
+            .frame(height: 14)
+            .contentShape(Rectangle())
+            .help("Drag to resize")
+            .onHover { inside in if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { v in
+                    if startHeight == nil { startHeight = height }
+                    let delta = gripOnTop ? -v.translation.height : v.translation.height       // a top grip: dragging up grows
+                    height = min(1200, max(minHeight, (startHeight ?? height) + delta))
+                }
+                .onEnded { _ in startHeight = nil })
+    }
+
+    private var scroller: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    content.frame(maxWidth: .infinity, alignment: .leading)
+                    Color.clear.frame(height: 1).id("pane-end")
+                }
+                .padding(6)
+            }
+            .onChange(of: scrollKey) { _, _ in proxy.scrollTo("pane-end") }
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        content.frame(maxWidth: .infinity, alignment: .leading)
-                        Color.clear.frame(height: 1).id("pane-end")
-                    }
-                    .padding(6)
-                }
-                .onChange(of: scrollKey) { _, _ in proxy.scrollTo("pane-end") }
+            if flexible {
+                scroller.frame(minHeight: minHeight, maxHeight: .infinity)
+            } else {
+                if gripOnTop { grip }
+                scroller.frame(height: height)
+                if !gripOnTop { grip }
             }
-            .frame(height: height)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
-            Capsule().fill(Color.secondary.opacity(0.55))
-                .frame(width: 44, height: 4)
-                .frame(maxWidth: .infinity)
-                .frame(height: 14)
-                .contentShape(Rectangle())
-                .help("Drag to resize")
-                .onHover { inside in if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() } }
-                .gesture(DragGesture(minimumDistance: 1)
-                    .onChanged { v in
-                        if startHeight == nil { startHeight = height }
-                        height = min(1200, max(minHeight, (startHeight ?? height) + v.translation.height))
-                    }
-                    .onEnded { _ in startHeight = nil })
         }
     }
 }

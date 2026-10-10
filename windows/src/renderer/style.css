@@ -1,7 +1,7 @@
 :root { color-scheme: light dark; --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --accent: #d71f2e; --progress: #0a84ff; --btn: #f2f2f5; }
 @media (prefers-color-scheme: dark) { :root { --bg: #1e1e20; --fg: #f2f2f5; --muted: #a0a0a8; --line: #3a3a3f; --btn: #2c2c30; } }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 14px; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+body { margin: 0; padding: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 h1 { font-size: 17px; margin: 0; } h2 { font-size: 14px; margin: 8px 0 4px; }
 .rec { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -22,7 +22,7 @@ kbd { color: var(--muted); font: inherit; font-size: 12px; } .on kbd { color: #f
 .row input#topic { flex: 1; }
 .hint { color: #c26a00; font-size: 12px; margin: 6px 0; }
 .note { color: var(--muted); font-size: 12px; margin: 6px 0; }
-#transcript { height: 260px; min-height: 80px; resize: vertical; overflow-y: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 0; user-select: text; }
+#transcript { flex: 1 1 auto; min-height: 60px; overflow-y: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 0; user-select: text; }
 #transcript p { margin: 0 0 6px; } #transcript p.partial { color: var(--muted); }
 #summaryText { height: 180px; min-height: 60px; resize: vertical; overflow-y: auto; border-bottom: 1px solid var(--line); white-space: pre-wrap; user-select: text; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
@@ -62,3 +62,14 @@ button.mini { height: 28px; min-width: 32px; padding: 0 8px; font-size: 13px; }
 #wordsDetails > summary { cursor: pointer; font-weight: 600; font-size: 14px; margin: 8px 0 4px; }
 #wordsBox ol { overflow-wrap: anywhere; }
 #transcript, #summaryText { scrollbar-width: thin; }
+/* No page-wide scrollbar: the page fits the window, and the big text areas share the free space and scroll on their own. */
+body > header, body > nav, body > .pcard, body > hr, body > p { flex: 0 0 auto; }
+body > main:not(.hidden) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+#page-recorder > * { flex: 0 0 auto; }
+#page-recorder > #transcriptBox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; }
+#page-recorder > #transcriptBox:not(.hidden) { display: flex; }
+#transcriptBox #transcript { flex: 1 1 0; }
+#summaryText { flex: none; }
+#wordsBox .cols { max-height: 150px; overflow-y: auto; resize: vertical; }
+#voiceList { max-height: 140px; overflow-y: auto; }
+#checkNote, #status { max-height: 4.2em; overflow-y: auto; }

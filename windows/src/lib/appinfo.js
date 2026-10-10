@@ -3,7 +3,7 @@
 module.exports = {
   name: 'Call Recorder',
   version: require('../../package.json').version,
-  build: '54',                      // number of commits at release
+  build: '55',                      // number of commits at release
   releaseDate: '8 October 2026',
   author: 'Maksim Masliukov',
   summary: 'Records any call you hear (Teams, Skype, a browser…) plus your microphone, transcribes it locally with Whisper, ' +
