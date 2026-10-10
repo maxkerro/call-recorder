@@ -49,7 +49,10 @@ final class AppState: ObservableObject {
     enum TranslationControl { case pause, resume, stop, restart }
 
     @Published var translationOpen = false {
-        didSet { if translationOpen { scheduleTranslation() } else { cancelTranslation() } }
+        didSet {
+            adjustWindowForTranslation(open: translationOpen)
+            if translationOpen { scheduleTranslation() } else { cancelTranslation() }
+        }
     }
     @Published var translateTo: String {
         didSet { UserDefaults.standard.set(translateTo, forKey: "translateTo"); scheduleTranslation() }
@@ -894,6 +897,46 @@ final class AppState: ObservableObject {
     func openFolder() { NSWorkspace.shared.open(rootDir) }
 
     func openVocabulary() { NSWorkspace.shared.open(WhisperEngine.ensureVocabularyFile()) }
+
+    // MARK: Window layout
+
+    @Published var transcriptHeight: CGFloat = 260        // the big text areas can be resized by dragging their grip
+    @Published var summaryHeight: CGFloat = 180
+    @Published var wordsExpanded = true
+
+    /// Changes whenever the transcript grows, so the transcript area follows its end.
+    var transcriptScrollKey: Int { finalLines.count &* 31 &+ partials.values.reduce(0) { $0 &+ $1.count } }
+
+    private var mainWindow: NSWindow? { NSApp.windows.first { $0.title == "CallRecorder" && !($0 is NSPanel) } }
+
+    /// Never bigger than the screen: shrinks and moves the window to fit the visible area.
+    func fitWindowToScreen() {
+        guard let w = mainWindow, let area = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var f = w.frame
+        f.size.width = min(f.width, area.width)
+        f.size.height = min(f.height, area.height)
+        f.origin.x = min(max(f.origin.x, area.minX), area.maxX - f.width)
+        f.origin.y = min(max(f.origin.y, area.minY), area.maxY - f.height)
+        if f != w.frame { w.setFrame(f, display: true, animate: false) }
+    }
+
+    private var translateGrow: CGFloat = 0
+
+    /// The translation pane needs room: the window grows by up to 460 pt (never past the screen) and gives it back.
+    private func adjustWindowForTranslation(open: Bool) {
+        guard let w = mainWindow, let area = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var f = w.frame
+        if open && translateGrow == 0 {
+            let width = min(f.width + 460, area.width)
+            translateGrow = width - f.width
+            f.size.width = width
+            f.origin.x = min(max(f.origin.x, area.minX), area.maxX - width)
+        } else if !open && translateGrow > 0 {
+            f.size.width = max(min(520, area.width), f.width - translateGrow)
+            translateGrow = 0
+        } else { return }
+        w.setFrame(f, display: true, animate: true)
+    }
 
     // MARK: Progress of the Whisper pass
 

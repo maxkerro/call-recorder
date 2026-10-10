@@ -103,3 +103,6 @@ Rename a speaker after a call and the app remembers the voice (stored only in `v
 
 ## Progress
 Transcribing a file or checking a recording shows a progress bar with a percentage (from whisper-cli's own progress output). Finding speakers shows a busy bar without a percentage.
+
+## Layout
+The window is resizable and opens no bigger than the screen. The transcript and summary boxes scroll and can be resized by dragging their bottom-right corner; the Words box collapses.

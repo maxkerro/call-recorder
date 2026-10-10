@@ -82,12 +82,14 @@
     <button id="btnWords" title="Most frequent words and words not in your Vocabulary list">Analyze words</button>
   </div>
   <section id="wordsBox" class="hidden">
-    <h2>Words <span id="wordsSource" class="hint"></span></h2>
+    <details id="wordsDetails" open>
+    <summary>Words <span id="wordsSource" class="hint"></span></summary>
     <div class="cols">
       <div><h3>10 most frequent</h3><ol id="wordsTop"></ol></div>
       <div><h3>10 unknown <button class="mini" id="btnAddAll" title="Add all to the Vocabulary list">Add all</button></h3><ol id="wordsUnknown"></ol></div>
     </div>
     <p class="hint">Unknown = names, abbreviations and terms that are not in your Vocabulary list. Add the ones Whisper should spell right.</p>
+  </details>
   </section>
   <label class="row opacity">Window transparency
     <input type="range" id="opacity" min="30" max="100" step="1" value="100">

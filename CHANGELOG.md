@@ -7,7 +7,7 @@ Version = **1.MINOR.PATCH**, counted from the git history:
 - every other commit (fixes, polish, wording, docs, hotkey/layout tweaks) raises PATCH;
 - **build** = number of commits at release.
 
-So 1.24.28 (build 53) = 24 feature commits + 28 fix/polish commits after the first one.
+So 1.24.29 (build 54) = 24 feature commits + 29 fix/polish commits after the first one.
 When you release: count again, update `Info.plist`, `Sources/CallRecorder/AppInfo.swift` and `windows/package.json`
 (+ `windows/src/lib/appinfo.js` for the build number); a test checks that they agree.
 

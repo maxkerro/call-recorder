@@ -98,8 +98,10 @@ async function captureScreen() {
 }
 
 function createWindow() {
+  const wa = screen.getPrimaryDisplay().workAreaSize;       // never open bigger than the screen; the window stays resizable
   win = new BrowserWindow({
-    width: 600, height: 860, minWidth: 560, title: 'CallRecorder', autoHideMenuBar: true,
+    width: Math.min(600, wa.width), height: Math.min(860, wa.height), minWidth: Math.min(560, wa.width), minHeight: Math.min(360, wa.height),
+    resizable: true, title: 'CallRecorder', autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -200,9 +202,14 @@ app.whenReady().then(() => {
   handle('setTranslation', (e, open, target) => {
     session.setTranslation(open, target);
     if (win && !win.isDestroyed()) {            // make room for the second column, give it back when closed
-      const [w, h] = win.getSize();
-      if (open && !translateWidth) { translateWidth = 460; win.setMinimumSize(560 + translateWidth, 400); win.setSize(w + translateWidth, h); }
-      if (!open && translateWidth) { win.setMinimumSize(560, 400); win.setSize(Math.max(560, w - translateWidth), h); translateWidth = 0; }
+      const area = screen.getDisplayMatching(win.getBounds()).workArea;
+      const b = win.getBounds();
+      if (open && !translateWidth) {                           // grow by up to 460 px, but never past the screen
+        const width = Math.min(b.width + 460, area.width);
+        translateWidth = width - b.width;
+        win.setBounds({ ...b, width, x: Math.max(area.x, Math.min(b.x, area.x + area.width - width)) });
+      }
+      if (!open && translateWidth) { win.setBounds({ ...b, width: Math.max(Math.min(560, area.width), b.width - translateWidth) }); translateWidth = 0; }
     }
   });
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
