@@ -921,6 +921,18 @@ final class AppState: ObservableObject {
         if f != w.frame { w.setFrame(f, display: true, animate: false) }
     }
 
+    /// The line under the transcript: the window grows or shrinks by `dy` (the top edge stays, the bottom stays on screen).
+    func resizeWindow(byHeight dy: CGFloat) {
+        guard dy != 0, let w = mainWindow, let area = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var f = w.frame
+        let top = f.maxY
+        let height = min(max(f.height + dy, w.minSize.height), top - area.minY)
+        guard height != f.height else { return }
+        f.size.height = height
+        f.origin.y = top - height
+        w.setFrame(f, display: true, animate: false)
+    }
+
     private var translateGrow: CGFloat = 0
 
     /// The translation pane needs room: the window grows by up to 460 pt (never past the screen) and gives it back.

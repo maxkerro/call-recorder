@@ -212,6 +212,14 @@ app.whenReady().then(() => {
       if (!open && translateWidth) { win.setBounds({ ...b, width: Math.max(Math.min(560, area.width), b.width - translateWidth) }); translateWidth = 0; }
     }
   });
+  handle('resizeWindowBy', (e, dy) => {                // the line under the transcript: the window grows, the transcript with it
+    if (!win || win.isDestroyed() || !Number.isFinite(dy)) return;
+    const b = win.getBounds();
+    const area = screen.getDisplayMatching(b).workArea;
+    const [, minH] = win.getMinimumSize();
+    const height = Math.round(Math.min(Math.max(b.height + dy, minH), area.y + area.height - b.y));   // the bottom stays on screen
+    if (height !== b.height) win.setBounds({ ...b, height });
+  });
   handle('rename', (e, a, b) => session.renameSpeaker(a, b));
   handle('confirmVoice', (e, name) => session.confirmVoice(String(name)));
   handle('addVocabulary', (e, words) => session.addVocabulary(words));

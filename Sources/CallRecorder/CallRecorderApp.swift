@@ -222,7 +222,8 @@ struct MenuView: View {
         }
 
         if !state.finalLines.isEmpty || !state.partials.isEmpty {
-            ResizablePane(height: $state.transcriptHeight, scrollKey: state.transcriptScrollKey, flexible: true) {
+            ResizablePane(height: $state.transcriptHeight, scrollKey: state.transcriptScrollKey, flexible: true,
+                          onWindowResize: { state.resizeWindow(byHeight: $0) }) {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(state.finalLines.enumerated()), id: \.offset) { _, l in
                             HStack(alignment: .top, spacing: 14) {
@@ -255,7 +256,7 @@ struct MenuView: View {
             Divider()
             Text("Summary").font(.subheadline.bold())
             if !state.summaryText.isEmpty {
-                ResizablePane(height: $state.summaryHeight, gripOnTop: true) {
+                ResizablePane(height: $state.summaryHeight) {
                     Text(state.summaryText)
                         .font(.callout)
                         .textSelection(.enabled)
@@ -481,43 +482,47 @@ struct ProgressCard: View {
 }
 
 
-/// A scrollable area with its own scrollbar. Either it takes all the free space (`flexible`, it follows the window),
-/// or it has a height the user sets by dragging the grip at its bottom (or top) edge.
-/// With a changing `scrollKey` it follows the end of its content (the live transcript).
+/// The resize handle under a text field: a thin line across its width. Reports vertical drag in small steps.
+struct GripLine: View {
+    var onDelta: (CGFloat) -> Void
+    @State private var last: CGFloat = 0
+
+    var body: some View {
+        Capsule().fill(Color.secondary.opacity(0.55))
+            .frame(height: 2)
+            .padding(.vertical, 6)                       // the hit area is taller than the line
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .help("Drag to resize")
+            .onHover { inside in if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    onDelta(v.translation.height - last)
+                    last = v.translation.height
+                }
+                .onEnded { _ in last = 0 })
+    }
+}
+
+/// A scrollable area with its own scrollbar and a line under it to resize it by dragging.
+/// `flexible`: it takes all the free space of the window, so its line resizes the window (`onWindowResize`).
+/// Otherwise the line sets the area's own height. With a changing `scrollKey` it follows the end of its content.
 struct ResizablePane<Content: View>: View {
     @Binding var height: CGFloat
     var scrollKey: Int
     var minHeight: CGFloat
     var flexible: Bool
-    var gripOnTop: Bool
+    var onWindowResize: ((CGFloat) -> Void)?
     private let content: Content
-    @State private var startHeight: CGFloat?
 
     init(height: Binding<CGFloat>, scrollKey: Int = 0, minHeight: CGFloat = 80, flexible: Bool = false,
-         gripOnTop: Bool = false, @ViewBuilder content: () -> Content) {
+         onWindowResize: ((CGFloat) -> Void)? = nil, @ViewBuilder content: () -> Content) {
         self._height = height
         self.scrollKey = scrollKey
         self.minHeight = minHeight
         self.flexible = flexible
-        self.gripOnTop = gripOnTop
+        self.onWindowResize = onWindowResize
         self.content = content()
-    }
-
-    private var grip: some View {
-        Capsule().fill(Color.secondary.opacity(0.55))
-            .frame(width: 44, height: 4)
-            .frame(maxWidth: .infinity)
-            .frame(height: 14)
-            .contentShape(Rectangle())
-            .help("Drag to resize")
-            .onHover { inside in if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() } }
-            .gesture(DragGesture(minimumDistance: 1)
-                .onChanged { v in
-                    if startHeight == nil { startHeight = height }
-                    let delta = gripOnTop ? -v.translation.height : v.translation.height       // a top grip: dragging up grows
-                    height = min(1200, max(minHeight, (startHeight ?? height) + delta))
-                }
-                .onEnded { _ in startHeight = nil })
     }
 
     private var scroller: some View {
@@ -538,10 +543,10 @@ struct ResizablePane<Content: View>: View {
         VStack(spacing: 0) {
             if flexible {
                 scroller.frame(minHeight: minHeight, maxHeight: .infinity)
+                GripLine { dy in onWindowResize?(dy) }
             } else {
-                if gripOnTop { grip }
                 scroller.frame(height: height)
-                if !gripOnTop { grip }
+                GripLine { dy in height = min(1200, max(minHeight, height + dy)) }
             }
         }
     }

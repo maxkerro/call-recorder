@@ -52,6 +52,7 @@
 
   <section id="transcriptBox" class="hidden">
     <div id="transcript"></div>
+    <div class="vgrip" data-window="1" title="Drag to resize"></div>
   </section>
 
   <div id="renameBox" class="row hidden">
@@ -67,6 +68,7 @@
   <section id="summaryBox" class="hidden">
     <h2>Summary</h2>
     <div id="summaryText"></div>
+    <div class="vgrip" data-target="summaryText" title="Drag to resize"></div>
     <p id="summaryNote" class="note"></p>
     <div class="row">
       <button id="btnCopySummary" class="hidden">Copy summary</button>
@@ -84,10 +86,11 @@
   <section id="wordsBox" class="hidden">
     <details id="wordsDetails" open>
     <summary>Words <span id="wordsSource" class="hint"></span></summary>
-    <div class="cols">
+    <div class="cols" id="wordsCols">
       <div><h3>10 most frequent</h3><ol id="wordsTop"></ol></div>
       <div><h3>10 unknown <button class="mini" id="btnAddAll" title="Add all to the Vocabulary list">Add all</button></h3><ol id="wordsUnknown"></ol></div>
     </div>
+    <div class="vgrip" data-target="wordsCols" title="Drag to resize"></div>
     <p class="hint">Unknown = names, abbreviations and terms that are not in your Vocabulary list. Add the ones Whisper should spell right.</p>
   </details>
   </section>

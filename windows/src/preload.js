@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   addVocabulary: (w) => ipcRenderer.invoke('addVocabulary', w),
   analyzeWords: () => ipcRenderer.invoke('analyzeWords'),
   translateControl: (a) => ipcRenderer.invoke('translateControl', a),
+  resizeWindowBy: (dy) => ipcRenderer.invoke('resizeWindowBy', dy),
   forgetVoice: (n) => ipcRenderer.invoke('forgetVoice', n),
   forgetAllVoices: () => ipcRenderer.invoke('forgetAllVoices'),
   openFolder: () => ipcRenderer.invoke('openFolder'),

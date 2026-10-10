@@ -222,3 +222,28 @@ function tickProgress() {
   setText($('progressTime'), t);
 }
 setInterval(tickProgress, 1000);
+
+// ---- resize lines under the text fields ----------------------------------------------------------------------------------
+// data-window: the transcript fills the free space, so its line resizes the window; data-target: that element's height.
+for (const grip of document.querySelectorAll('.vgrip')) {
+  grip.addEventListener('pointerdown', (e) => {
+    grip.setPointerCapture(e.pointerId);
+    grip.classList.add('drag');
+    const target = grip.dataset.target ? document.getElementById(grip.dataset.target) : null;
+    let lastY = e.screenY;
+    const startY = e.clientY, startH = target ? target.getBoundingClientRect().height : 0;
+    const move = (ev) => {
+      if (target) target.style.height = `${Math.max(50, Math.min(900, startH + (ev.clientY - startY)))}px`;
+      else { const dy = ev.screenY - lastY; lastY = ev.screenY; if (dy) window.api.resizeWindowBy(dy); }
+    };
+    const up = () => {
+      grip.classList.remove('drag');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+}

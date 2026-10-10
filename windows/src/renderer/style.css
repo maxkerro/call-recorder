@@ -24,7 +24,7 @@ kbd { color: var(--muted); font: inherit; font-size: 12px; } .on kbd { color: #f
 .note { color: var(--muted); font-size: 12px; margin: 6px 0; }
 #transcript { flex: 1 1 auto; min-height: 60px; overflow-y: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 0; user-select: text; }
 #transcript p { margin: 0 0 6px; } #transcript p.partial { color: var(--muted); }
-#summaryText { height: 180px; min-height: 60px; resize: vertical; overflow-y: auto; border-bottom: 1px solid var(--line); white-space: pre-wrap; user-select: text; }
+#summaryText { height: 180px; min-height: 60px; overflow-y: auto; border-bottom: 1px solid var(--line); white-space: pre-wrap; user-select: text; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .head-right { display: flex; align-items: center; gap: 12px; }
 .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -70,6 +70,10 @@ body > main:not(.hidden) { flex: 1 1 auto; min-height: 0; display: flex; flex-di
 #page-recorder > #transcriptBox:not(.hidden) { display: flex; }
 #transcriptBox #transcript { flex: 1 1 0; }
 #summaryText { flex: none; }
-#wordsBox .cols { max-height: 150px; overflow-y: auto; resize: vertical; }
+#wordsBox .cols { height: 130px; min-height: 50px; overflow-y: auto; }
 #voiceList { max-height: 140px; overflow-y: auto; }
 #checkNote, #status { max-height: 4.2em; overflow-y: auto; }
+/* The resize handle under a text field: a thin line across its width. */
+.vgrip { flex: none; height: 14px; cursor: ns-resize; position: relative; touch-action: none; user-select: none; }
+.vgrip::after { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 2px; border-radius: 1px; background: var(--muted); opacity: .55; }
+.vgrip:hover::after, .vgrip.drag::after { opacity: 1; background: var(--progress); }
