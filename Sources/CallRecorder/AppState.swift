@@ -521,7 +521,7 @@ final class AppState: ObservableObject {
     func transcribe(_ url: URL) async {
         guard !busy else { return }
         busy = true
-        defer { busy = false }
+        defer { busy = false; endProgress() }
         do {
             let text: String
             switch engine {
@@ -536,18 +536,20 @@ final class AppState: ObservableObject {
                 var turns: [SpeakerTurn] = []
                 if identifySpeakers {
                     status = "Finding who speaks when… (the first time this downloads small speaker models)"
+                    busyProgress("Finding who speaks when")
                     do { turns = try await Diarizer.shared.diarize(url); callVoices = await Diarizer.shared.lastVoices; confirmed = [] }
                     catch { checkNote = "Speaker recognition failed: \(error.localizedDescription)" }
                     status = "Transcribing \(url.lastPathComponent) with \(modelName)… (several minutes for long calls)"
                 }
+                let sink = startProgress("Transcribing \(url.lastPathComponent)")
                 if turns.isEmpty {
                     text = try await Task.detached(priority: .userInitiated) {
-                        try WhisperEngine.transcribeFile(url, language: lang)
+                        try WhisperEngine.transcribeFile(url, language: lang, progress: sink)
                     }.value
                 } else {
                     let turns = turns
                     text = try await Task.detached(priority: .userInitiated) {
-                        try WhisperEngine.transcribeFileWithSpeakers(url, language: lang, turns: turns)
+                        try WhisperEngine.transcribeFileWithSpeakers(url, language: lang, turns: turns, progress: sink)
                             .joined(separator: "\n")
                     }.value
                 }
@@ -677,6 +679,7 @@ final class AppState: ObservableObject {
         var diarizeNote = ""
         if identifySpeakers, let system {
             checkNote = "Finding who speaks when… (the first time this downloads small speaker models)"
+            busyProgress("Finding who speaks when")
             do {
                 turns = try await Diarizer.shared.diarize(system)
                 callVoices = await Diarizer.shared.lastVoices
@@ -693,10 +696,12 @@ final class AppState: ObservableObject {
             diarizeNote = " Speaker recognition skipped: no call-audio track was captured."
         }
         checkNote = "Checking the transcript with the accurate model… (a few minutes for long calls)"
+        defer { endProgress() }
         do {
             let turns = turns
+            let sink = startProgress("Checking the transcript")
             let lines = try await Task.detached(priority: .utility) {
-                try WhisperEngine.transcribeTracks(system: system, mic: mic, language: lang, turns: turns)
+                try WhisperEngine.transcribeTracks(system: system, mic: mic, language: lang, turns: turns, progress: sink)
             }.value
             guard !lines.isEmpty else {
                 checkNote = "Transcript check heard no speech; the live transcript was kept."
@@ -889,6 +894,28 @@ final class AppState: ObservableObject {
     func openFolder() { NSWorkspace.shared.open(rootDir) }
 
     func openVocabulary() { NSWorkspace.shared.open(WhisperEngine.ensureVocabularyFile()) }
+
+    // MARK: Progress of the Whisper pass
+
+    /// 0...1 while a transcription runs; negative = busy with unknown length (finding speakers); nil = nothing running.
+    @Published var progress: Double?
+    @Published var progressLabel = ""
+
+    /// Starts a progress display and returns the callback for the (background) Whisper pass.
+    private func startProgress(_ label: String) -> @Sendable (Double) -> Void {
+        progress = 0
+        progressLabel = label
+        return { [weak self] f in
+            Task { @MainActor in
+                guard let self, self.progress != nil else { return }
+                let v = (f * 100).rounded() / 100
+                if v != self.progress { self.progress = v }
+            }
+        }
+    }
+
+    private func busyProgress(_ label: String) { progress = -1; progressLabel = label }
+    private func endProgress() { progress = nil; progressLabel = "" }
 
     // MARK: Word statistics
 

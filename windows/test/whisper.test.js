@@ -103,3 +103,10 @@ test('wavFrom writes a valid 16 kHz mono header', () => {
   assert.strictEqual(b.readInt16LE(46), 32767);
   assert.strictEqual(b.readInt16LE(48), -32767);
 });
+
+test('parseProgress reads whisper-cli progress lines from stderr', () => {
+  const { parseProgress } = require('../src/lib/whisper');
+  assert.strictEqual(parseProgress('whisper_print_progress_callback: progress =  10%\nwhisper_print_progress_callback: progress =  35%'), 35);
+  assert.strictEqual(parseProgress('something else'), null);
+  assert.strictEqual(parseProgress('progress = 100%'), 100);
+});

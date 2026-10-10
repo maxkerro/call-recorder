@@ -333,3 +333,20 @@ test('Confirm refines a recognised voice once; Analyze words lists frequent and 
   assert.ok(fs.readFileSync(path.join(support, 'vocabulary.txt'), 'utf8').includes('Zorblax'));
   assert.ok(!s.s.wordStats.unknown.some((u) => u.word === 'Zorblax'));
 });
+
+test('transcribing a file reports progress (percent) and clears it afterwards', async () => {
+  const seen = [];
+  const { s, states } = makeSession({
+    isReady: () => true,
+    whisper: {
+      transcribeFileWithSpeakers: async (file, lang, turns, onProgress) => { onProgress(0.25); onProgress(0.25); onProgress(1); return ['[00:01] Speaker 1: hi there']; },
+      transcribeFile: async (file, lang, onProgress) => { onProgress(0.5); return '[00:01] hello'; },
+    },
+  });
+  s.hooks.changed = (st) => seen.push(st.progress);
+  fs.writeFileSync(path.join(process.env.CALLREC_DIR, 'p.mp3'), 'x');
+  await s.transcribeFile(path.join(process.env.CALLREC_DIR, 'p.mp3'));
+  assert.ok(seen.includes(0.25) && seen.includes(1), JSON.stringify(seen));
+  assert.strictEqual(seen.filter((p) => p === 0.25).length, 1);            // the same percent is not announced twice
+  assert.strictEqual(s.s.progress, null);                                  // cleared when done
+});

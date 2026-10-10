@@ -143,6 +143,12 @@ function render(s) {
   show($('btnCopySummary'), !!s.summaryText);
 
   $('btnFile').disabled = s.busy || s.isRecording;
+  const pr = s.progress;
+  show($('progressBox'), pr !== null && pr !== undefined);
+  if (pr !== null && pr !== undefined) {
+    if (pr < 0) $('progress').removeAttribute('value'); else $('progress').value = Math.round(pr * 100);       // no value = busy, unknown length
+    setText($('progressText'), pr < 0 ? `${s.progressLabel}…` : `${s.progressLabel}: ${Math.round(pr * 100)} %`);
+  }
   setText($('status'), s.status);
   setText($('checkNote'), s.checkNote);
 }

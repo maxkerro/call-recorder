@@ -92,6 +92,14 @@ struct MenuView: View {
             }
 
             Divider()
+            if let p = state.progress {
+                HStack(spacing: 10) {
+                    if p < 0 { ProgressView().controlSize(.small) } else { ProgressView(value: p).frame(maxWidth: .infinity) }
+                    Text(p < 0 ? "\(state.progressLabel)…" : "\(state.progressLabel): \(Int((p * 100).rounded())) %")
+                        .font(.callout.monospacedDigit())
+                    if p < 0 { Spacer() }
+                }
+            }
             Text(state.status)
                 .font(.caption)
                 .foregroundStyle(.secondary)

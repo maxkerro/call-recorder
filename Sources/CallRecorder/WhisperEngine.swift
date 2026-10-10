@@ -204,7 +204,7 @@ enum WhisperEngine {
 
     // MARK: Running whisper-cli (blocking; call off the main thread)
 
-    static func run(wav: URL, language: String, quality: Bool = false) throws -> [Segment] {
+    static func run(wav: URL, language: String, quality: Bool = false, progress: ((Double) -> Void)? = nil) throws -> [Segment] {
         guard let cli = cliPath() else { throw WhisperError.notInstalled }
         guard let model = modelPath() else { throw WhisperError.noModel }
 
@@ -217,33 +217,56 @@ enum WhisperEngine {
             if !prompt.isEmpty { extra += ["--prompt", prompt, "--carry-initial-prompt"] }
             if let vad = vadModelPath() { extra += ["--vad", "-vm", vad] }
         }
+        if progress != nil { extra += ["-pp"] }                      // print progress ("progress =  37%") on stderr
         do {
-            return try execute(cli: cli, args: base + extra)
+            return try execute(cli: cli, args: base + extra, progress: progress)
         } catch where !extra.isEmpty {
             // An older whisper-cli may not know some option: retry with the basics rather than failing.
             return try execute(cli: cli, args: base)
         }
     }
 
-    private static func execute(cli: String, args: [String]) throws -> [Segment] {
+    /// The last "progress =  37%" in a piece of whisper-cli stderr, as 0...1.
+    static func parseProgress(_ chunk: String) -> Double? {
+        guard let re = try? NSRegularExpression(pattern: #"progress\s*=\s*(\d+)\s*%"#) else { return nil }
+        let ns = chunk as NSString
+        guard let m = re.matches(in: chunk, range: NSRange(location: 0, length: ns.length)).last,
+              let v = Double(ns.substring(with: m.range(at: 1))) else { return nil }
+        return min(v, 100) / 100
+    }
+
+    /// Keeps the end of whisper-cli's stderr for error messages while it is read as it arrives.
+    private final class StderrTail: @unchecked Sendable {
+        private let lock = NSLock()
+        private var text = ""
+        func add(_ s: String) { lock.lock(); text = String((text + s).suffix(4000)); lock.unlock() }
+        var value: String { lock.lock(); defer { lock.unlock() }; return text }
+    }
+
+    private static func execute(cli: String, args: [String], progress: ((Double) -> Void)? = nil) throws -> [Segment] {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli)
         p.arguments = args
         let out = Pipe()
         p.standardOutput = out
-        // whisper-cli is chatty on stderr; a file avoids pipe-buffer deadlocks.
-        let errURL = FileManager.default.temporaryDirectory.appendingPathComponent("whisper-\(UUID().uuidString).log")
-        FileManager.default.createFile(atPath: errURL.path, contents: nil)
-        let errHandle = try FileHandle(forWritingTo: errURL)
-        p.standardError = errHandle
-        defer { try? errHandle.close(); try? FileManager.default.removeItem(at: errURL) }
+        // whisper-cli is chatty on stderr; it is drained as it arrives (no pipe-buffer deadlock) and mined for progress.
+        let err = Pipe()
+        p.standardError = err
+        let tail = StderrTail()
+        err.fileHandleForReading.readabilityHandler = { h in
+            let d = h.availableData
+            if d.isEmpty { return }
+            let s = String(decoding: d, as: UTF8.self)
+            tail.add(s)
+            if let progress, let f = parseProgress(s) { progress(f) }
+        }
+        defer { err.fileHandleForReading.readabilityHandler = nil }
 
         try p.run()
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         guard p.terminationStatus == 0 else {
-            let log = (try? String(contentsOf: errURL, encoding: .utf8)) ?? ""
-            throw WhisperError.failed("whisper-cli failed (\(p.terminationStatus)): \(log.suffix(300))")
+            throw WhisperError.failed("whisper-cli failed (\(p.terminationStatus)): \(tail.value.suffix(300))")
         }
         return parse(String(data: data, encoding: .utf8) ?? "")
     }
@@ -287,7 +310,7 @@ enum WhisperEngine {
     // MARK: Whole-file transcription (step 2)
 
     /// Converts any audio file to 16 kHz mono WAV with ffmpeg (levelling the volume), then runs Whisper.
-    static func segments(of input: URL, language: String) throws -> [Segment] {
+    static func segments(of input: URL, language: String, progress: ((Double) -> Void)? = nil) throws -> [Segment] {
         guard let ffmpeg = AppState.ffmpegPath() else {
             throw WhisperError.failed("ffmpeg not found — run: brew install ffmpeg")
         }
@@ -304,12 +327,12 @@ enum WhisperEngine {
         p.waitUntilExit()
         guard p.terminationStatus == 0 else { throw WhisperError.failed("ffmpeg could not read \(input.lastPathComponent)") }
 
-        return try run(wav: wav, language: language, quality: true)
+        return try run(wav: wav, language: language, quality: true, progress: progress)
     }
 
     /// Whole file as text with [mm:ss] markers (step 2).
-    static func transcribeFile(_ input: URL, language: String) throws -> String {
-        format(try segments(of: input, language: language))
+    static func transcribeFile(_ input: URL, language: String, progress: ((Double) -> Void)? = nil) throws -> String {
+        format(try segments(of: input, language: language, progress: progress))
     }
 
     /// True when the track is (nearly) digital silence, e.g. the other side never spoke or nothing played.
@@ -335,11 +358,16 @@ enum WhisperEngine {
     /// The accurate "check" pass: transcribes the call-audio track ("Them") and the microphone track ("Me")
     /// separately, so overlapping speech doesn't confuse Whisper, and returns speaker-labelled lines.
     static func transcribeTracks(system: URL?, mic: URL?, language: String,
-                                 turns: [SpeakerTurn] = []) throws -> [String] {
+                                 turns: [SpeakerTurn] = [], progress: ((Double) -> Void)? = nil) throws -> [String] {
         var all: [(t: Double, label: String, text: String)] = []
-        for (url, label) in [(system, "Them"), (mic, "Me")] {
-            guard let url, !isSilent(url) else { continue }
-            for seg in try segments(of: url, language: language) {
+        var tracks: [(url: URL, label: String)] = []
+        for (candidate, label) in [(system, "Them"), (mic, "Me")] {
+            if let url = candidate, !isSilent(url) { tracks.append((url, label)) }
+        }
+        for (i, track) in tracks.enumerated() {
+            let (url, label) = (track.url, track.label)
+            let part: ((Double) -> Void)? = progress.map { cb in { f in cb((Double(i) + f) / Double(tracks.count)) } }   // over all tracks
+            for seg in try segments(of: url, language: language, progress: part) {
                 if label == "Them" && !turns.isEmpty {
                     all += split(seg, by: turns, fallback: label)
                 } else {
@@ -351,9 +379,10 @@ enum WhisperEngine {
     }
 
     /// Whole file with speaker labels: diarization of the (mixed) file decides who says each segment.
-    static func transcribeFileWithSpeakers(_ input: URL, language: String, turns: [SpeakerTurn]) throws -> [String] {
+    static func transcribeFileWithSpeakers(_ input: URL, language: String, turns: [SpeakerTurn],
+                                           progress: ((Double) -> Void)? = nil) throws -> [String] {
         var all: [(t: Double, label: String, text: String)] = []
-        for seg in try segments(of: input, language: language) {
+        for seg in try segments(of: input, language: language, progress: progress) {
             all += split(seg, by: turns, fallback: "Speaker ?")
         }
         return lines(from: all)

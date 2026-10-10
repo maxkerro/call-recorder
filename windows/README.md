@@ -100,3 +100,6 @@ Rename a speaker after a call and the app remembers the voice (stored only in `v
 - **Confirm speaker** refines the saved voice of a correctly recognised person.
 - **Analyze words**: 10 most frequent and 10 unknown words (not in the Vocabulary list), with "+ Vocabulary".
 - Translation pane buttons: ⏸ pause, ▶ continue, ⏹ stop (cancels the request, skips the backlog), ↻ restart.
+
+## Progress
+Transcribing a file or checking a recording shows a progress bar with a percentage (from whisper-cli's own progress output). Finding speakers shows a busy bar without a percentage.

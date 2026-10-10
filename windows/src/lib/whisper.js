@@ -26,13 +26,20 @@ function parse(output) {
   return segs;
 }
 
-async function execute(cli, args) {
-  const r = await tools.run(cli, args);
+/** whisper-cli with --print-progress writes "progress =  37%" to stderr; returns the last percentage in a chunk, or null. */
+function parseProgress(chunk) {
+  let last = null;
+  for (const m of String(chunk).matchAll(/progress\s*=\s*(\d+)\s*%/g)) last = Math.min(100, +m[1]);
+  return last;
+}
+
+async function execute(cli, args, onProgress) {
+  const r = await tools.run(cli, args, onProgress ? { onStderr: (s) => { const p = parseProgress(s); if (p !== null) onProgress(p / 100); } } : {});
   if (r.code !== 0) throw new tools.ToolError(`whisper-cli failed (${r.code}): ${r.stderr.slice(-300)}`);
   return parse(r.stdout.toString('utf8'));
 }
 
-async function runCli(wav, language, quality = false) {
+async function runCli(wav, language, quality = false, onProgress = null) {
   const cli = tools.cliPath();
   if (!cli) throw new tools.ToolError('whisper-cli not found. Run setup-whisper.ps1.');
   const model = tools.modelPath();
@@ -47,8 +54,9 @@ async function runCli(wav, language, quality = false) {
     const vad = tools.vadModelPath();
     if (vad) extra.push('--vad', '-vm', vad);
   }
+  if (onProgress) extra.push('-pp');                          // print progress
   try {
-    return await execute(cli, [...base, ...extra]);
+    return await execute(cli, [...base, ...extra], onProgress);
   } catch (e) {
     if (!extra.length) throw e;
     return execute(cli, base);                                // an older whisper-cli may not know some option
@@ -58,7 +66,7 @@ async function runCli(wav, language, quality = false) {
 // ---- whole files ------------------------------------------------------------------------------------------------------
 
 /** Any audio file -> 16 kHz mono WAV (volume levelled), then Whisper. */
-async function segmentsOf(input, language) {
+async function segmentsOf(input, language, onProgress = null) {
   const ffmpeg = tools.ffmpegPath();
   if (!ffmpeg) throw new tools.ToolError('ffmpeg not found. Run setup-whisper.ps1 (it installs ffmpeg) or: winget install Gyan.FFmpeg');
   const wav = path.join(os.tmpdir(), `whisper-in-${crypto.randomUUID()}.wav`);
@@ -66,7 +74,7 @@ async function segmentsOf(input, language) {
     const r = await tools.run(ffmpeg, ['-y', '-loglevel', 'error', '-i', input,
       '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', wav]);
     if (r.code !== 0) throw new tools.ToolError(`ffmpeg could not read ${path.basename(input)}`);
-    return await runCli(wav, language, true);
+    return await runCli(wav, language, true, onProgress);
   } finally {
     fs.rm(wav, { force: true }, () => {});
   }
@@ -151,11 +159,13 @@ function toLines(entries) {
 }
 
 /** The accurate "check" pass: call-audio track ("Them" or Speaker N) and microphone track ("Me"), separately. */
-async function transcribeTracks({ system, mic, language, turns = [] }) {
+async function transcribeTracks({ system, mic, language, turns = [], onProgress = null }) {
   const all = [];
-  for (const [file, label] of [[system, 'Them'], [mic, 'Me']]) {
-    if (!file || await isSilent(file)) continue;
-    for (const seg of await segmentsOf(file, language)) {
+  const tracks = [];
+  for (const [file, label] of [[system, 'Them'], [mic, 'Me']]) if (file && !(await isSilent(file))) tracks.push([file, label]);
+  for (const [i, [file, label]] of tracks.entries()) {
+    const part = onProgress ? (f) => onProgress((i + f) / tracks.length) : null;          // progress over all tracks
+    for (const seg of await segmentsOf(file, language, part)) {
       if (label === 'Them' && turns.length) all.push(...splitBySpeaker(seg, turns, label));
       else all.push({ t: seg.start, label, text: seg.text });
     }
@@ -164,9 +174,9 @@ async function transcribeTracks({ system, mic, language, turns = [] }) {
 }
 
 /** Whole file with speaker labels (every voice, including yours, gets a Speaker label). */
-async function transcribeFileWithSpeakers(input, language, turns) {
+async function transcribeFileWithSpeakers(input, language, turns, onProgress = null) {
   const all = [];
-  for (const seg of await segmentsOf(input, language)) all.push(...splitBySpeaker(seg, turns, 'Speaker ?'));
+  for (const seg of await segmentsOf(input, language, onProgress)) all.push(...splitBySpeaker(seg, turns, 'Speaker ?'));
   return toLines(all);
 }
 
@@ -185,11 +195,11 @@ function format(segs) {
   return out;
 }
 
-async function transcribeFile(input, language) {
-  return format(await segmentsOf(input, language));
+async function transcribeFile(input, language, onProgress = null) {
+  return format(await segmentsOf(input, language, onProgress));
 }
 
 module.exports = {
-  parse, runCli, segmentsOf, isSilent, speakerFor, speakerAt, splitBySpeaker, toLines,
+  parse, parseProgress, runCli, segmentsOf, isSilent, speakerFor, speakerAt, splitBySpeaker, toLines,
   transcribeTracks, transcribeFileWithSpeakers, format, transcribeFile,
 };

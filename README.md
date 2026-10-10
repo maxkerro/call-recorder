@@ -132,3 +132,5 @@ Pick the language (English, Deutsch, Русский) in the menu before recordin
 **Analyze words:** lists the 10 most frequent words (filler words left out) and 10 "unknown" words of the transcript on screen, or of a transcript file if there is none. Unknown = names, abbreviations and terms that are not in the Vocabulary list; "+ Vocabulary" / "Add all" put them into it. Lowercase ordinary words can't be judged unknown, because there is no dictionary.
 
 **Translation controls** (pause ⏸, continue ▶, stop ⏹, restart ↻, shown while the translation pane is open): Pause lets the current line finish and waits; Stop cancels the request to Ollama and skips what was waiting (Continue then picks up from new lines); Restart clears the translation and translates everything again.
+
+**Progress:** while a file is transcribed or a recording is checked, a bar with a percentage shows how far Whisper is (it reads whisper-cli's own progress output). Finding speakers shows a busy indicator without a percentage, because that step has no progress to report. With two tracks (call audio and microphone) the percentage covers both.

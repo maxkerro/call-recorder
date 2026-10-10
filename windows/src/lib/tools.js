@@ -61,7 +61,7 @@ const isReady = () => !!(cliPath() && modelPath());
 const isLiveReady = () => !!(serverPath() && modelPath(true));
 
 /** Runs a program to completion. Resolves {code, stdout(Buffer), stderr(string tail)}. */
-function run(file, args, { input, onSpawn } = {}) {
+function run(file, args, { input, onSpawn, onStderr } = {}) {
   return new Promise((resolve, reject) => {
     let p;
     try {
@@ -71,7 +71,7 @@ function run(file, args, { input, onSpawn } = {}) {
     const out = [];
     let err = '';
     p.stdout.on('data', (d) => out.push(d));
-    p.stderr.on('data', (d) => { err = (err + d.toString()).slice(-4000); });
+    p.stderr.on('data', (d) => { const s = d.toString(); err = (err + s).slice(-4000); if (onStderr) onStderr(s); });
     p.on('error', reject);
     p.on('close', (code) => resolve({ code, stdout: Buffer.concat(out), stderr: err }));
     if (input) p.stdin.end(input); else p.stdin.end();

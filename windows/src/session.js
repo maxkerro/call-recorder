@@ -47,7 +47,7 @@ class Session {
     this.settings = config.loadSettings();
     this.s = {
       isRecording: false, liveMode: false, busy: false, status: 'Ready', elapsed: '00:00',
-      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [], knownVoices: voiceBook.names(), confirmable: [], wordStats: null,
+      finalLines: [], partials: {}, checkNote: '', summaryText: '', summaryNote: '', speakerLabels: [], knownVoices: voiceBook.names(), progress: null, progressLabel: '', confirmable: [], wordStats: null,
       sysSeconds: 0, micSeconds: 0, topic: '', shotCount: 0, translateOpen: false, translateState: 'running', translations: {}, translateNote: '',
     };
     this.translator = new Translator({
@@ -379,7 +379,7 @@ class Session {
     const lang = config.languageCode(this.settings.language);
     let turns = []; let note = '';
     if (this.settings.identifySpeakers && system) {
-      this.set({ checkNote: 'Finding who speaks when… (the first time this downloads small speaker models)' });
+      this.set({ checkNote: 'Finding who speaks when… (the first time this downloads small speaker models)', progress: -1, progressLabel: 'Finding who speaks when' });
       try {
         turns = await this.deps.diarize(system);
         this.callVoices = turns.voices || {};
@@ -395,7 +395,7 @@ class Session {
     }
     this.set({ checkNote: 'Checking the transcript with the accurate model… (a few minutes for long calls)' });
     try {
-      const lines = await this.deps.whisper.transcribeTracks({ system, mic, language: lang, turns });
+      const lines = await this.deps.whisper.transcribeTracks({ system, mic, language: lang, turns, onProgress: this.startProgress('Checking the transcript') });
       if (!lines.length) {
         this.set({ checkNote: 'Transcript check heard no speech; the live transcript was kept.' + note });
         return live;
@@ -413,6 +413,8 @@ class Session {
     } catch (e) {
       this.set({ checkNote: `Transcript check failed: ${e.message}. The live transcript was kept.` });
       return live;
+    } finally {
+      this.endProgress();
     }
   }
 
@@ -426,16 +428,17 @@ class Session {
       let turns = [];
       if (this.settings.identifySpeakers) {
         this.set({ status: 'Finding who speaks when… (the first time this downloads small speaker models)' });
+        this.set({ progress: -1, progressLabel: 'Finding who speaks when' });         // no percentage for this step
         try { turns = await this.deps.diarize(file); this.callVoices = turns.voices || {}; }
         catch (e) { this.set({ checkNote: `Speaker recognition failed: ${e.message || e}` }); }
       }
       this.set({ status: `Transcribing ${path.basename(file)}… (several minutes for long calls)` });
       let out;
       if (turns.length) {
-        lines = await this.deps.whisper.transcribeFileWithSpeakers(file, lang, turns);
+        lines = await this.deps.whisper.transcribeFileWithSpeakers(file, lang, turns, this.startProgress(`Transcribing ${path.basename(file)}`));
         out = lines.join('\n');
       } else {
-        out = await this.deps.whisper.transcribeFile(file, lang);
+        out = await this.deps.whisper.transcribeFile(file, lang, this.startProgress(`Transcribing ${path.basename(file)}`));
         lines = out.includes('\n\n') ? out.split('\n\n') : out.split('\n');
       }
       if (!out) { this.set({ status: `No speech recognized in ${path.basename(file)}` }); lines = null; return; }
@@ -446,6 +449,7 @@ class Session {
       this.set({ status: `Transcription failed: ${e.message}` });
       lines = null;
     } finally {
+      this.endProgress();
       this.set({ busy: false });
     }
     if (lines) await this.finishCall(lines, P, shots);
@@ -598,6 +602,18 @@ class Session {
     this.set({ status: add.length ? `Added to the Vocabulary list: ${add.join(', ')}` : 'Those words are already in the Vocabulary list.' });
     return add.length;
   }
+
+  /** Progress of the Whisper pass: a callback taking 0..1 (updates only when the whole percent changes) and an end function. */
+  startProgress(label) {
+    this.set({ progress: 0, progressLabel: label });
+    let last = -1;
+    return (f) => {
+      const pct = Math.max(0, Math.min(100, Math.round(f * 100)));
+      if (pct !== last && this.s.progress !== null) { last = pct; this.set({ progress: pct / 100 }); }
+    };
+  }
+
+  endProgress() { if (this.s.progress !== null) this.set({ progress: null, progressLabel: '' }); }
 
   forgetVoice(name) { voiceBook.forget(String(name)); this.set({ knownVoices: voiceBook.names() }); }
   forgetAllVoices() { voiceBook.forgetAll(); this.set({ knownVoices: [] }); }
